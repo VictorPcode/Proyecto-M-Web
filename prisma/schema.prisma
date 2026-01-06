@@ -1,15 +1,85 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
 generator client {
-  provider = "prisma-client"
-  output   = "../generated/prisma"
+  provider = "prisma-client-js"
+  output   = "../apps/api/node_modules/.prisma/client"
 }
 
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
+}
+
+model User {
+  id         String    @id @default(cuid())
+  name       String
+  email      String    @unique
+  phone      String?
+  password   String
+  role       UserRole
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  // Relaciones
+  passengerRides Ride[]     @relation("PassengerRides")
+  driverRides    Ride[]     @relation("DriverRides")
+  vehicles       Vehicle[]
+}
+
+enum UserRole {
+  PASSENGER
+  DRIVER
+  ADMIN
+}
+
+model Vehicle {
+  id         String   @id @default(cuid())
+  placa      String
+  marca      String?
+  modelo     String?
+  color      String?
+  capacidad  Int?
+  estado     VehicleState
+
+  // Relaciones
+  driver     User?     @relation(fields: [driverId], references: [id])
+  driverId   String?
+  rides      Ride[]
+
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+}
+
+enum VehicleState {
+  DISPONIBLE
+  OCUPADO
+  MANTENIMIENTO
+}
+
+model Ride {
+  id            String   @id @default(cuid())
+  passenger     User     @relation("PassengerRides", fields: [passengerId], references: [id])
+  passengerId   String
+
+  driver        User?    @relation("DriverRides", fields: [driverId], references: [id])
+  driverId      String?
+
+  vehicle       Vehicle? @relation(fields: [vehicleId], references: [id])
+  vehicleId     String?
+
+  originLat     Float
+  originLng     Float
+  destLat       Float
+  destLng       Float
+  estimatedFare Float
+  finalFare     Float?
+  state         RideState
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+enum RideState {
+  PENDIENTE
+  ASIGNADO
+  EN_CURSO
+  FINALIZADO
+  CANCELADO
 }

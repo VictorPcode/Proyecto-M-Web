@@ -1,1 +1,1 @@
-self.__REACT_LOADABLE_MANIFEST="{}"
+self.__REACT_LOADABLE_MANIFEST="{\"_app.tsx -> socket.io-client\":{\"id\":\"_app.tsx -> socket.io-client\",\"files\":[\"static/chunks/node_modules_pnpm_socket_io-client_4_8_3_node_modules_socket_io-client_build_esm_index_js.js\"]},\"index.tsx -> socket.io-client\":{\"id\":\"index.tsx -> socket.io-client\",\"files\":[\"static/chunks/node_modules_pnpm_socket_io-client_4_8_3_node_modules_socket_io-client_build_esm_index_js.js\"]}}"

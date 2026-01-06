@@ -9,15 +9,27 @@
   "scripts": {
     "dev:web": "npm run dev --workspace=web",
     "dev:api": "npm run dev --workspace=api",
-    "dev": "concurrently \"npm run dev:api\" \"npm run dev:web\"",
+    "dev": "concurrently \"pnpm --filter api dev\" \"pnpm --filter web dev\"",
     "build": "npm run build --workspace=web && npm run build --workspace=api"
   },
   "devDependencies": {
+    "@prisma/client": "6.19.1",
+    "@types/cors": "^2.8.19",
     "@types/express": "^5.0.5",
-    "concurrently": "^8.2.0"
+    "@types/node": "^25.0.3",
+    "@types/react": "^19.2.7",
+    "@types/react-dom": "^19.2.3",
+    "autoprefixer": "^10.4.23",
+    "concurrently": "^8.2.0",
+    "create-next-app": "^16.1.1",
+    "postcss": "^8.5.6",
+    "prisma": "6.19.1",
+    "tailwindcss": "^4.1.18",
+    "typescript": "^5.9.3"
   },
   "dependencies": {
-    "@prisma/client": "^6.18.0",
-    "prisma": "^6.18.0"
+    "dotenv": "^17.2.3",
+    "react": "^19.2.3",
+    "react-dom": "^19.2.3"
   }
 }

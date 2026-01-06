@@ -7,13 +7,16 @@ export interface GeoLocation {
   accuracy?: number;
 }
 
-export interface Node {
+/**
+ * Node genérico, permite que cada tipo concreto defina su meta específico
+ */
+export interface Node<TMeta = Record<string, unknown>> {
   id: ID;
   path: string;
   source?: string;
-  meta: Record<string, unknown>;
+  meta: TMeta;
   title: string;
-  links: ID[];       
+  links: ID[];
   backlinks: ID[];
   tasks: Task[];
 }
@@ -42,6 +45,9 @@ export interface TaskSession {
   isCurrent?: boolean;
 }
 
+// ---------------------
+// Metas específicos
+// ---------------------
 export interface VehicleMeta {
   tipo: "vehiculo";
   placa: string;
@@ -61,17 +67,6 @@ export interface DriverMeta {
   estado: "offline" | "disponible" | "en_viaje";
 }
 
-export interface VehicleNode extends Node {
-  meta: VehicleMeta;
-  currentLocation?: GeoLocation;
-}
-
-export interface DriverNode extends Node {
-  meta: DriverMeta;
-  vehicleId?: ID;
-  currentLocation?: GeoLocation;
-}
-
 export interface PassengerMeta {
   tipo: "pasajero";
   nombre: string;
@@ -80,12 +75,12 @@ export interface PassengerMeta {
   rating?: number;
 }
 
-export interface PassengerNode extends Node {
-  meta: PassengerMeta;
-  currentLocation?: GeoLocation;
-}
-
-export type RideState = "pendiente" | "asignado" | "en_curso" | "finalizado" | "cancelado";
+export type RideState =
+  | "pendiente"
+  | "asignado"
+  | "en_curso"
+  | "finalizado"
+  | "cancelado";
 
 export interface RouteSegment {
   origin: GeoLocation;
@@ -111,7 +106,22 @@ export interface RideMeta {
   paymentMethod?: "efectivo" | "tarjeta" | "wallet";
 }
 
-export interface RideNode extends Node {
-  meta: RideMeta;
+// ---------------------
+// Nodos concretos
+// ---------------------
+export interface VehicleNode extends Node<VehicleMeta> {
+  currentLocation?: GeoLocation;
+}
+
+export interface DriverNode extends Node<DriverMeta> {
+  vehicleId?: ID;
+  currentLocation?: GeoLocation;
+}
+
+export interface PassengerNode extends Node<PassengerMeta> {
+  currentLocation?: GeoLocation;
+}
+
+export interface RideNode extends Node<RideMeta> {
   tracking?: GeoLocation[]; // history
 }

@@ -3,7 +3,8 @@ const fs = require('fs');
 const path = require('path');
 
 function printTree(dir, prefix = '') {
-  const items = fs.readdirSync(dir).filter(item => item !== 'node_modules'); // ignorar node_modules
+  const ignore = ['node_modules', 'objects', 'webpack'];
+  const items = fs.readdirSync(dir).filter(item =>!ignore.includes(item)); // ignorar node_modules
   items.forEach((item, index) => {
     const isLast = index === items.length - 1;
     const pointer = isLast ? '└── ' : '├── ';
