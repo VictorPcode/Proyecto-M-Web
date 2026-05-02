@@ -5,6 +5,20 @@ node_modules
 .next
 .env*
 
+# Environment variables - NUNCA subir contraseñas o claves sensibles
+.env
+.env.*.local
+.env.development
+.env.test
+.env.production
+.env.backup
+
+# API Keys and credentials
+*.key
+*.pem
+.npmrc
+.npmrc
+
 # Created by https://www.toptal.com/developers/gitignore/api/venv,node,nextjs
 # Edit at https://www.toptal.com/developers/gitignore?templates=venv,node,nextjs
 

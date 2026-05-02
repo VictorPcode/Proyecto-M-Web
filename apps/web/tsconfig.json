@@ -1,14 +1,22 @@
 {
   "extends": "../../tsconfig.json",
   "compilerOptions": {
+    "ignoreDeprecations": "6.0",
     "jsx": "preserve",
     "module": "esnext",
     "moduleResolution": "bundler",
+    "baseUrl": ".",
+    "paths": {
+      "@movi/ui": ["../../packages/ui/index.ts"],
+      "@movi/types": ["../../packages/types/src/index.ts"],
+      "ui": ["../../packages/ui/index.ts"]
+    },
     "outDir": "dist",
     "allowJs": true,
     "noEmit": true,
     "incremental": true,
-    "isolatedModules": true
+    "isolatedModules": true,
+    "skipLibCheck": true
   },
   "include": [
     "next-env.d.ts",
@@ -16,6 +24,7 @@
     "**/*.tsx"
   ],
   "exclude": [
-    "node_modules"
+    "node_modules",
+    ".next"
   ]
 }
