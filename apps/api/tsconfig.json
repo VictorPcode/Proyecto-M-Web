@@ -2,6 +2,7 @@
   "extends": "../../tsconfig.json",
   "compilerOptions": {
     "ignoreDeprecations": "6.0",
+    "types": ["node"],
     "jsx": "preserve",
     "module": "esnext",
     "moduleResolution": "bundler",
