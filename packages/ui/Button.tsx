@@ -1,24 +1,16 @@
 import React from "react";
-import { Colors } from "./colors";
 
-export interface ButtonProps {
-  children: React.ReactNode;
-  onClick?: () => void;
+export type ButtonProps = React.ButtonHTMLAttributes<HTMLButtonElement> & {
+  variant?: "primary" | "ghost";
+};
+
+export function Button({ variant = "primary", children, ...rest }: ButtonProps) {
+  const className = variant === "primary" ? "btn" : "small-btn";
+  return (
+    <button className={className} {...rest}>
+      {children}
+    </button>
+  );
 }
 
-export const Button = ({ children, onClick }: ButtonProps) => {
-  return (
-    <Button
-      onClick={onClick}
-      style={{
-        backgroundColor: Colors.primary,
-        color: Colors.text,
-        padding: "12px 24px",
-        borderRadius: "8px",
-        fontWeight: "bold",
-      }}
-    >
-      {children}
-    </Button>
-  );
-};
+export default Button;

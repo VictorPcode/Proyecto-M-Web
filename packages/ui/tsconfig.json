@@ -2,17 +2,24 @@
   "compilerOptions": {
     "target": "ES6",
     "module": "ESNext",
+
     "jsx": "react-jsx",
+
     "declaration": true,
     "outDir": "dist",
+
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
-    "baseUrl": ".",
-    "paths": {
-      "ui": ["packages/ui"],
-      "ui/*": ["packages/ui/*"]
-    }
+    "types": [],
+
+    "lib": ["dom", "dom.iterable", "es6"],
+
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true
   },
-  "include": ["*.ts", "*.tsx"]
+
+  "include": ["*.ts", "*.tsx"],
+
+  "exclude": ["node_modules", "dist"]
 }

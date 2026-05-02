@@ -1,3 +1,9 @@
-export * from "./Button";
-export * from "./colors";
-export type { ButtonProps } from './Button';
+export { default as Button } from "./Button";
+export type { ButtonProps } from "./Button";
+export { Colors } from "./colors";
+
+export { default as MapPlaceholder } from "./MapPlaceholder";
+export { default as LeafletMap } from "./LeafletMap";
+export { default as Header } from "./Header";
+
+export { default as RideCard } from "./RideCard";

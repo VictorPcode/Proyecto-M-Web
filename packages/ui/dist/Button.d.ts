@@ -1,6 +1,6 @@
 import React from "react";
-export interface ButtonProps {
-    children: React.ReactNode;
-    onClick?: () => void;
-}
-export declare const Button: ({ children, onClick }: ButtonProps) => import("react/jsx-runtime").JSX.Element;
+export type ButtonProps = React.ButtonHTMLAttributes<HTMLButtonElement> & {
+    variant?: "primary" | "ghost";
+};
+export declare function Button({ variant, children, ...rest }: ButtonProps): import("react/jsx-runtime").JSX.Element;
+export default Button;

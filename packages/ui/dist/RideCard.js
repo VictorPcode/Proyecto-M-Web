@@ -1,0 +1,4 @@
+import { jsxs as _jsxs, jsx as _jsx } from "react/jsx-runtime";
+export default function RideCard({ id, origin, destination, onAccept, onCancel, small }) {
+    return (_jsxs("div", { className: "card", style: { display: "flex", justifyContent: "space-between", alignItems: "center" }, children: [_jsxs("div", { children: [_jsxs("div", { style: { fontWeight: 700 }, children: ["Ride ", id !== null && id !== void 0 ? id : ""] }), _jsxs("div", { style: { color: "var(--muted)", fontSize: 13 }, children: ["From: ", origin.lat.toFixed(3), ",", origin.lng.toFixed(3), " \u2192 To: ", destination.lat.toFixed(3), ",", destination.lng.toFixed(3)] })] }), _jsxs("div", { style: { display: "flex", gap: 8 }, children: [onAccept && _jsx("button", { className: "btn", onClick: onAccept, children: "Aceptar" }), onCancel && _jsx("button", { className: "small-btn", onClick: onCancel, children: "Cancelar" })] })] }));
+}

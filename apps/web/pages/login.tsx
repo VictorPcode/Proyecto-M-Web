@@ -1,0 +1,212 @@
+import { useState } from "react";
+import { useRouter } from "next/router";
+import Link from "next/link";
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
+
+export default function LoginPage() {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+  const router = useRouter();
+
+  const submit = async (e?: any) => {
+    e?.preventDefault();
+    setLoading(true);
+    try {
+      const res = await fetch(`${API_URL}/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        if (data.error === "not_found") {
+          if (confirm("Usuario no encontrado. ¿Deseas registrarte?")) {
+            router.push("/register");
+            return;
+          }
+          return;
+        }
+        if (data.error === "invalid_credentials") {
+          alert("Contraseña incorrecta. Verificá tus datos.");
+          return;
+        }
+        if (data.error === "not_approved") {
+          alert("Tu cuenta de conductor aún no fue aprobada por un administrador.");
+          return;
+        }
+        alert("Error al iniciar sesión: " + (data.error || "intenta de nuevo"));
+        return;
+      }
+      localStorage.setItem("movi:token", data.token);
+      localStorage.setItem("movi:user", JSON.stringify(data.user));
+      if (data.user?.role === "DRIVER") {
+        router.push("/rider");
+      } else {
+        router.push("/client");
+      }
+    } catch (err) {
+      console.error(err);
+      alert("Login error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div style={{ 
+      position: 'relative', 
+      width: '100vw', 
+      height: '100vh', 
+      display: 'flex', 
+      alignItems: 'center', 
+      justifyContent: 'center',
+      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
+    }}>
+      <div style={{ 
+        position: 'fixed', 
+        top: '50%', 
+        left: '50%', 
+        transform: 'translate(-50%, -50%)',
+        zIndex: 10, 
+        background: 'rgba(255, 255, 255, 0.98)', 
+        padding: '32px 40px', 
+        borderRadius: '24px', 
+        backdropFilter: 'blur(20px)', 
+        boxShadow: '0 20px 60px rgba(0, 0, 0, 0.3)',
+        width: '400px',
+        maxWidth: 'calc(100vw - 64px)'
+      }}>
+        <div style={{ fontWeight: 600, marginBottom: 8, fontSize: 28, color: '#000', letterSpacing: '-0.5px', textAlign: 'center' }}>
+          MOVI
+        </div>
+        <div style={{ fontSize: 14, color: '#86868b', marginBottom: 24, textAlign: 'center' }}>
+          Ingresa para continuar
+        </div>
+
+        <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          <div style={{ 
+            display: 'flex', 
+            alignItems: 'center',
+            padding: '14px 16px',
+            background: '#f5f5f7',
+            borderRadius: '12px',
+            border: '2px solid transparent',
+            transition: 'all 0.2s ease'
+          }}>
+            <input
+              placeholder="Email"
+              type="email"
+              value={email}
+              onChange={e => setEmail(e.target.value)}
+              style={{ 
+                flex: 1,
+                border: 'none', 
+                background: 'transparent', 
+                color: '#000', 
+                fontSize: 15,
+                fontWeight: 500,
+                outline: 'none',
+                fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
+              }}
+            />
+          </div>
+          
+          <div style={{ 
+            display: 'flex', 
+            alignItems: 'center',
+            padding: '14px 16px',
+            background: '#f5f5f7',
+            borderRadius: '12px',
+            border: '2px solid transparent',
+            transition: 'all 0.2s ease'
+          }}>
+            <input
+              placeholder="Contraseña"
+              type="password"
+              value={password}
+              onChange={e => setPassword(e.target.value)}
+              style={{ 
+                flex: 1,
+                border: 'none', 
+                background: 'transparent', 
+                color: '#000', 
+                fontSize: 15,
+                fontWeight: 500,
+                outline: 'none',
+                fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
+              }}
+            />
+          </div>
+
+          <button 
+            className="btn" 
+            onClick={submit} 
+            disabled={loading}
+            style={{
+              background: '#007AFF',
+              color: 'white',
+              padding: '14px 24px',
+              borderRadius: '12px',
+              fontSize: 15,
+              fontWeight: 600,
+              border: 'none',
+              boxShadow: '0 4px 16px rgba(0, 122, 255, 0.4)',
+              cursor: 'pointer',
+              width: '100%',
+              marginTop: 8
+            }}
+          >
+            {loading ? "Entrando..." : "Entrar"}
+          </button>
+          
+          <button 
+            type="button" 
+            onClick={() => router.push('/register')}
+            style={{
+              background: 'transparent',
+              color: '#007AFF',
+              padding: '12px 24px',
+              borderRadius: '12px',
+              fontSize: 14,
+              fontWeight: 500,
+              border: 'none',
+              cursor: 'pointer',
+              width: '100%'
+            }}
+          >
+            Registrarme
+          </button>
+          <p style={{
+            fontSize: 12,
+            color: '#666',
+            textAlign: 'center',
+            margin: '8px 0'
+          }}>
+            Consulta nuestros{' '}
+            <Link href="/terminos" style={{ color: '#007AFF', textDecoration: 'underline' }}>
+              Términos y Condiciones
+            </Link>
+          </p>
+          <button
+            type="button"
+            onClick={() => router.push('/forgot-password')}
+            style={{
+              background: 'transparent',
+              color: '#86868b',
+              padding: '8px 24px',
+              borderRadius: '12px',
+              fontSize: 13,
+              border: 'none',
+              cursor: 'pointer',
+              width: '100%'
+            }}
+          >
+            ¿Olvidaste tu contraseña?
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}

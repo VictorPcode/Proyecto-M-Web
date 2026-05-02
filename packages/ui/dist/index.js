@@ -1,2 +1,5 @@
-export * from "./Button";
-export * from "./colors";
+export { default as Button } from "./Button";
+export { Colors } from "./colors";
+export { default as MapPlaceholder } from "./MapPlaceholder";
+export { default as Header } from "./Header";
+export { default as RideCard } from "./RideCard";

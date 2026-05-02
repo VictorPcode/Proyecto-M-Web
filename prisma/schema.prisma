@@ -1,6 +1,5 @@
 generator client {
   provider = "prisma-client-js"
-  output   = "../apps/api/node_modules/.prisma/client"
 }
 
 datasource db {
@@ -15,13 +14,30 @@ model User {
   phone      String?
   password   String
   role       UserRole
+  approved   Boolean   @default(false)    // admin approval required for drivers
+  licenseType String?   // e.g. B Professional
+  licenseNumber String?
+  
+  // documentos requeridos para conductores
+  docCedulaVerdeFront String?   // path/url a cédula verde frente
+  docCedulaVerdeBack String?    // path/url a cédula verde dorso
+  docLicenseFront String?       // path/url a licencia frente
+  docLicenseBack String?        // path/url a licencia dorso
+  docCedulaFront String?        // path/url a cédula frente
+  docCedulaBack String?         // path/url a cédula dorso
+  docJudicialCert String?       // path/url a certificado de antecedentes
+  
+  // estado de documentos
+  documentStatus DocumentStatus? @default(PENDING)  // PENDING, APPROVED, REJECTED
+  rejectionReason String?  // motivo del rechazo si aplica
+  
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt
 
-  // Relaciones
-  passengerRides Ride[]     @relation("PassengerRides")
-  driverRides    Ride[]     @relation("DriverRides")
+  passengerRides Ride[] @relation("PassengerRides")
+  driverRides    Ride[] @relation("DriverRides")
   vehicles       Vehicle[]
+  notifications  Notification[]
 }
 
 enum UserRole {
@@ -36,16 +52,17 @@ model Vehicle {
   marca      String?
   modelo     String?
   color      String?
+  year       Int?     // año del vehículo
   capacidad  Int?
   estado     VehicleState
 
-  // Relaciones
-  driver     User?     @relation(fields: [driverId], references: [id])
-  driverId   String?
-  rides      Ride[]
+  driver   User?  @relation(fields: [driverId], references: [id], onDelete: SetNull)
+  driverId String?
 
-  createdAt  DateTime  @default(now())
-  updatedAt  DateTime  @updatedAt
+  rides Ride[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 enum VehicleState {
@@ -55,15 +72,16 @@ enum VehicleState {
 }
 
 model Ride {
-  id            String   @id @default(cuid())
-  passenger     User     @relation("PassengerRides", fields: [passengerId], references: [id])
-  passengerId   String
+  id String @id @default(cuid())
 
-  driver        User?    @relation("DriverRides", fields: [driverId], references: [id])
-  driverId      String?
+  passenger   User   @relation("PassengerRides", fields: [passengerId], references: [id], onDelete: Cascade)
+  passengerId String
 
-  vehicle       Vehicle? @relation(fields: [vehicleId], references: [id])
-  vehicleId     String?
+  driver   User?  @relation("DriverRides", fields: [driverId], references: [id], onDelete: SetNull)
+  driverId String?
+
+  vehicle   Vehicle? @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
+  vehicleId String?
 
   originLat     Float
   originLng     Float
@@ -82,4 +100,29 @@ enum RideState {
   EN_CURSO
   FINALIZADO
   CANCELADO
+}
+
+enum DocumentStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      NotificationType
+  title     String
+  message   String
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
+enum NotificationType {
+  APPROVED
+  REJECTED
+  RIDE_COMPLETED
+  DOCUMENT_REJECTED
+  OTHER
 }

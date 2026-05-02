@@ -7,15 +7,20 @@
     "packages/*"
   ],
   "scripts": {
-    "dev:web": "npm run dev --workspace=web",
-    "dev:api": "npm run dev --workspace=api",
-    "dev": "concurrently \"pnpm --filter api dev\" \"pnpm --filter web dev\"",
-    "build": "npm run build --workspace=web && npm run build --workspace=api"
+    "dev:free-ports": "node scripts/kill-ports-windows.js",
+    "dev:web": "pnpm --filter web dev",
+    "dev:api": "pnpm --filter api dev",
+    "dev:local": "pnpm run dev:free-ports && concurrently \"pnpm --filter api dev\" \"pnpm --filter web dev\"",
+    "dev:mobile": "pnpm run dev:free-ports && concurrently \"pnpm --filter api dev\" \"pnpm --filter web dev\"",
+    "dev": "pnpm run dev:local",
+    "build": "pnpm --filter web build && pnpm --filter api build"
   },
   "devDependencies": {
     "@prisma/client": "6.19.1",
+    "@types/bcryptjs": "^3.0.0",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.5",
+    "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^25.0.3",
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.3",
@@ -25,11 +30,17 @@
     "postcss": "^8.5.6",
     "prisma": "6.19.1",
     "tailwindcss": "^4.1.18",
+    "ts-node": "^10.9.2",
+    "tsx": "^4.21.0",
     "typescript": "^5.9.3"
   },
   "dependencies": {
+    "@types/leaflet": "^1.9.21",
     "dotenv": "^17.2.3",
+    "leaflet": "^1.9.4",
     "react": "^19.2.3",
-    "react-dom": "^19.2.3"
-  }
+    "react-dom": "^19.2.3",
+    "react-leaflet": "^5.0.0"
+  },
+  "packageManager": "pnpm@10.26.2"
 }
