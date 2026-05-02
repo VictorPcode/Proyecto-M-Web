@@ -1,7 +1,7 @@
 //client.tsx
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useRouter } from "next/router";
-import { Button, Header } from "ui";
+import { Button, Header } from "@movi/ui";
 import LeafletMap from "../../../packages/ui/LeafletMap";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
