@@ -24,7 +24,13 @@ export default function MapPlaceholder({ accessToken, center = [-74.5, 40], zoom
             var _a, _b;
             try {
                 const token = accessToken !== null && accessToken !== void 0 ? accessToken : ((_a = process.env.NEXT_PUBLIC_MAPBOX_TOKEN) !== null && _a !== void 0 ? _a : "");
-                if (!token || mapRef.current)
+                console.log("Mapbox token available:", !!token, "Length:", token === null || token === void 0 ? void 0 : token.length);
+                if (!token) {
+                    console.error("No Mapbox token provided!");
+                    setMapError("No Mapbox token configured");
+                    return;
+                }
+                if (mapRef.current)
                     return;
                 const mb = (yield import("mapbox-gl"));
                 try {
@@ -36,12 +42,43 @@ export default function MapPlaceholder({ accessToken, center = [-74.5, 40], zoom
                 if (!containerRef.current)
                     return;
                 const centerNorm = Array.isArray(center) && center.length === 2 ? center.slice(0, 2) : [-74.5, 40];
+                // Simple custom style using only free tier sources
+                const basicStyle = {
+                    version: 8,
+                    sources: {},
+                    layers: [
+                        {
+                            id: 'background',
+                            type: 'background',
+                            paint: { 'background-color': '#f0f0f0' }
+                        }
+                    ]
+                };
                 const map = new mapboxgl.Map({
                     container: containerRef.current,
-                    style: mapStyle || "mapbox://styles/mapbox/navigation-night-v1",
+                    style: mapStyle || basicStyle,
                     center: centerNorm,
                     zoom,
+                    dragPan: false,
+                    scrollZoom: false,
+                    boxZoom: false,
+                    dragRotate: false,
+                    keyboard: false,
+                    doubleClickZoom: false,
+                    touchZoomRotate: false,
+                    attributionControl: false,
+                    logoPosition: 'bottom-left',
                 });
+                // Ocultar logo y controles de Mapbox con CSS
+                const style = document.createElement('style');
+                style.textContent = `
+          .mapboxgl-ctrl-bottom-left,
+          .mapboxgl-ctrl-bottom-right,
+          .mapboxgl-ctrl-logo {
+            display: none !important;
+          }
+        `;
+                document.head.appendChild(style);
                 mapRef.current = map;
                 map.on("load", () => { mapLoadedRef.current = true; try {
                     map.resize();
@@ -124,20 +161,56 @@ export default function MapPlaceholder({ accessToken, center = [-74.5, 40], zoom
         const coords = (route || []).filter((c) => Array.isArray(c) && c.length === 2);
         const geojson = { type: "Feature", properties: {}, geometry: { type: "LineString", coordinates: coords } };
         try {
-            if (map.getSource("route")) {
-                map.getSource("route").setData(geojson);
-            }
-            else {
+            // Remover capas anteriores si existen
+            if (map.getLayer("route-outline"))
+                map.removeLayer("route-outline");
+            if (map.getLayer("route"))
+                map.removeLayer("route");
+            if (map.getSource("route"))
+                map.removeSource("route");
+            // Solo agregar si hay coordenadas
+            if (coords.length > 1) {
+                // Agregar source
                 map.addSource("route", { type: "geojson", data: geojson });
-                map.addLayer({ id: "route", type: "line", source: "route", layout: { "line-join": "round", "line-cap": "round" }, paint: { "line-color": "#ff7e5f", "line-width": 4 } });
-            }
-            if (coords.length > 0) {
+                // Capa de borde (outline) más grueso
+                map.addLayer({
+                    id: "route-outline",
+                    type: "line",
+                    source: "route",
+                    layout: {
+                        "line-join": "round",
+                        "line-cap": "round"
+                    },
+                    paint: {
+                        "line-color": "#1a73e8",
+                        "line-width": 8,
+                        "line-opacity": 0.4
+                    }
+                });
+                // Capa principal de la ruta
+                map.addLayer({
+                    id: "route",
+                    type: "line",
+                    source: "route",
+                    layout: {
+                        "line-join": "round",
+                        "line-cap": "round"
+                    },
+                    paint: {
+                        "line-color": "#4285f4",
+                        "line-width": 5,
+                        "line-opacity": 0.9
+                    }
+                });
+                // Ajustar vista para mostrar toda la ruta
                 const mb = require("mapbox-gl");
                 const bounds = coords.reduce((b, c) => b.extend(c), new mb.LngLatBounds(coords[0], coords[0]));
-                map.fitBounds(bounds, { padding: 40 });
+                map.fitBounds(bounds, { padding: 80, maxZoom: 15 });
             }
         }
-        catch (_a) { }
+        catch (err) {
+            console.error("Error actualizando ruta:", err);
+        }
     }, [JSON.stringify(route || [])]);
     const token = accessToken !== null && accessToken !== void 0 ? accessToken : ((_a = process.env.NEXT_PUBLIC_MAPBOX_TOKEN) !== null && _a !== void 0 ? _a : "");
     if (!token) {
