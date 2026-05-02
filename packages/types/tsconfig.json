@@ -1,25 +1,17 @@
 {
   "compilerOptions": {
-    "target": "ES6",
+    "target": "ES2022",
     "module": "ESNext",
-
-    "jsx": "react-jsx",
-
     "declaration": true,
     "outDir": "dist",
-
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
     "types": ["node"],
-
-    "lib": ["dom", "dom.iterable", "es6"],
-
+    "lib": ["ES2022"],
     "moduleResolution": "bundler",
     "resolveJsonModule": true
   },
-
-  "include": ["*.ts", "*.tsx"],
-
+  "include": ["src/**/*"],
   "exclude": ["node_modules", "dist"]
 }
