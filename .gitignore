@@ -12,6 +12,8 @@ node_modules
 .env.test
 .env.production
 .env.backup
+!.env.example
+!.env*.example
 
 # API Keys and credentials
 *.key
