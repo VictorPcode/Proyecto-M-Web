@@ -1,5 +1,5 @@
 {
-  "name": "@movi/ui",
+  "name": "@movi/types",
   "version": "0.0.0",
   "private": true,
   "main": "index.ts",

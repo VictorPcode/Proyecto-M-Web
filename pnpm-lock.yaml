@@ -158,6 +158,9 @@ importers:
         specifier: ^4.8.1
         version: 4.8.3
     devDependencies:
+      '@types/mapbox-gl':
+        specifier: ^3.5.0
+        version: 3.5.0
       '@types/react':
         specifier: 19.2.2
         version: 19.2.2
@@ -546,6 +549,10 @@ packages:
 
   '@types/leaflet@1.9.21':
     resolution: {integrity: sha512-TbAd9DaPGSnzp6QvtYngntMZgcRk+igFELwR2N99XZn7RXUdKgsXMR+28bUO0rPsWp8MIu/f47luLIQuSLYv/w==}
+
+  '@types/mapbox-gl@3.5.0':
+    resolution: {integrity: sha512-3wVAUTC6q1UKatLP9YxFBnGJWi3neJUF9OKeyRdUf/BsYjZAP35xmZkL4zogVJbO3vdExuSVYCAkzUXjpjdhOg==}
+    deprecated: This is a stub types definition. mapbox-gl provides its own type definitions, so you do not need this installed.
 
   '@types/ms@2.1.0':
     resolution: {integrity: sha512-GsCCIZDE/p3i96vtEqx+7dBUGXrc7zeSK3wwPHIaRThS+9OhWIXRqzs4d6k1SVU8g91DrNRWxWUGhp5KXQb2VA==}
@@ -1957,6 +1964,10 @@ snapshots:
   '@types/leaflet@1.9.21':
     dependencies:
       '@types/geojson': 7946.0.16
+
+  '@types/mapbox-gl@3.5.0':
+    dependencies:
+      mapbox-gl: 2.15.0
 
   '@types/ms@2.1.0': {}
 
