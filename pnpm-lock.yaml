@@ -196,10 +196,6 @@ importers:
         version: 5.9.3
 
   packages/ui:
-    dependencies:
-      mapbox-gl:
-        specifier: '>=2'
-        version: 2.15.0
     devDependencies:
       '@types/mapbox-gl':
         specifier: ^3.5.0
@@ -213,6 +209,9 @@ importers:
       '@types/react-dom':
         specifier: ^19.2.3
         version: 19.2.3(@types/react@19.2.14)
+      mapbox-gl:
+        specifier: ^2.15.0
+        version: 2.15.0
       react:
         specifier: ^18.2.0
         version: 18.2.0
