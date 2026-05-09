@@ -42,9 +42,6 @@ importers:
       '@types/jsonwebtoken':
         specifier: ^9.0.10
         version: 9.0.10
-      '@types/mapbox-gl':
-        specifier: ^3.5.0
-        version: 3.5.0
       '@types/node':
         specifier: ^25.6.0
         version: 25.6.0
@@ -164,9 +161,6 @@ importers:
         specifier: ^4.8.1
         version: 4.8.3
     devDependencies:
-      '@types/mapbox-gl':
-        specifier: ^3.5.0
-        version: 3.5.0
       '@types/node':
         specifier: ^20.0.0
         version: 20.19.39
@@ -196,10 +190,11 @@ importers:
         version: 5.9.3
 
   packages/ui:
+    dependencies:
+      mapbox-gl:
+        specifier: ^2.15.0
+        version: 2.15.0
     devDependencies:
-      '@types/mapbox-gl':
-        specifier: ^3.5.0
-        version: 3.5.0
       '@types/node':
         specifier: ^20.0.0
         version: 20.19.39
@@ -209,9 +204,6 @@ importers:
       '@types/react-dom':
         specifier: ^19.2.3
         version: 19.2.3(@types/react@19.2.14)
-      mapbox-gl:
-        specifier: ^2.15.0
-        version: 2.15.0
       react:
         specifier: ^18.2.0
         version: 18.2.0
@@ -570,10 +562,6 @@ packages:
 
   '@types/leaflet@1.9.21':
     resolution: {integrity: sha512-TbAd9DaPGSnzp6QvtYngntMZgcRk+igFELwR2N99XZn7RXUdKgsXMR+28bUO0rPsWp8MIu/f47luLIQuSLYv/w==}
-
-  '@types/mapbox-gl@3.5.0':
-    resolution: {integrity: sha512-3wVAUTC6q1UKatLP9YxFBnGJWi3neJUF9OKeyRdUf/BsYjZAP35xmZkL4zogVJbO3vdExuSVYCAkzUXjpjdhOg==}
-    deprecated: This is a stub types definition. mapbox-gl provides its own type definitions, so you do not need this installed.
 
   '@types/ms@2.1.0':
     resolution: {integrity: sha512-GsCCIZDE/p3i96vtEqx+7dBUGXrc7zeSK3wwPHIaRThS+9OhWIXRqzs4d6k1SVU8g91DrNRWxWUGhp5KXQb2VA==}
@@ -1991,10 +1979,6 @@ snapshots:
   '@types/leaflet@1.9.21':
     dependencies:
       '@types/geojson': 7946.0.16
-
-  '@types/mapbox-gl@3.5.0':
-    dependencies:
-      mapbox-gl: 2.15.0
 
   '@types/ms@2.1.0': {}
 
