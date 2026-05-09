@@ -87,8 +87,9 @@ function authMiddleware(
   res: express.Response,
   next: express.NextFunction,
 ) {
-  const auth = req.headers.authorization || "";
-  const token = auth.startsWith("Bearer ") ? auth.slice(7) : undefined;
+  const auth = Array.isArray(req.headers.authorization)
+  ? req.headers.authorization[0]
+  : req.headers.authorization || "";  const token = auth.startsWith("Bearer ") ? auth.slice(7) : undefined;
   if (!token) return res.status(401).json({ error: "missing_token" });
   try {
     const payload = jwt.verify(token, JWT_SECRET) as any;
@@ -1021,10 +1022,13 @@ drivers.on("connection", (socket) => {
       console.log(
         `Enviando ${pending.length} solicitudes pendientes al driver ${socket.id}`,
       );
-      pending.forEach((r) => {
+      pending.forEach((r: Awaited<typeof pending>[number]) => {
         socket.emit("driver:nearby_request", {
           rideId: r.id,
           passengerId: r.passengerId,
+
+
+
           passengerName: r.passenger?.name || "Pasajero",
           origin: { lat: r.originLat, lng: r.originLng },
           destination: { lat: r.destLat, lng: r.destLng },
