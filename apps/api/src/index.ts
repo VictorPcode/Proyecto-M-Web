@@ -89,7 +89,8 @@ function authMiddleware(
 ) {
   const auth = Array.isArray(req.headers.authorization)
   ? req.headers.authorization[0]
-  : req.headers.authorization || "";  const token = auth.startsWith("Bearer ") ? auth.slice(7) : undefined;
+  : req.headers.authorization || "" as string | string[];  
+  const token = auth.startsWith("Bearer ") ? auth.slice(7) : undefined;
   if (!token) return res.status(401).json({ error: "missing_token" });
   try {
     const payload = jwt.verify(token, JWT_SECRET) as any;
