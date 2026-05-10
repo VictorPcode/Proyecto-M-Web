@@ -12,6 +12,8 @@ import jwt from "jsonwebtoken";
 import crypto from "crypto";
 import nodemailer from "nodemailer";
 
+
+
 // In-memory password reset token store: token -> { userId, expiresAt }
 const resetTokens = new Map<string, { userId: string; expiresAt: number }>();
 
@@ -48,6 +50,12 @@ enum RideState {
   FINALIZADO = "FINALIZADO",
   CANCELADO = "CANCELADO",
 }
+
+console.log("🟡 Intentando conectar Prisma...");
+
+prisma.$connect()
+  .then(() => console.log("🟢 Prisma CONNECT OK"))
+  .catch((e: any) => console.error("🔴 Prisma CONNECT FAIL", e));
 
 function isPlusCode(value?: string) {
   if (!value) return false;
