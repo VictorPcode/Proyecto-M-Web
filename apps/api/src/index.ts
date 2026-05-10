@@ -1269,8 +1269,11 @@ passengers.on("connection", (socket) => {
 // ---------------------
 // Server
 // ---------------------
-const PORT = process.env.PORT ? Number(process.env.PORT) : 4000;
-const HOST = process.env.HOST || "0.0.0.0";
+const PORT = Number(process.env.PORT) || 4000;
+
+httpServer.listen(PORT, () => {
+  console.log(`API running on port ${PORT}`);
+});
 
 process.on("uncaughtException", (error) => {
   console.error("Uncaught Exception:", error);
