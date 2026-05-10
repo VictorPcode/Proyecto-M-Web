@@ -826,7 +826,7 @@ app.put("/users/:id", authMiddleware, async (req, res) => {
 
 // get user document status
 app.get("/users/:id/documents", authMiddleware, async (req, res) => {
-  const { id } = req.params;
+  const { id } = req.params as any;
   const userId = (req.user as any)?.id;
   
   // Only allow user to view their own docs or admin viewing anyone
