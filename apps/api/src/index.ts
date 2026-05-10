@@ -1287,17 +1287,26 @@ const HOST = "0.0.0.0";
 
 async function startServer() {
   try {
-    console.log("[INIT] Connecting Prisma...");
+    console.log("[BOOT] Starting server...");
+    console.log("[BOOT] PORT:", PORT);
+    console.log("[BOOT] HOST:", HOST);
+
+    console.log("[BOOT] Connecting Prisma...");
 
     await prisma.$connect();
 
-    console.log("[INIT] Prisma connected");
+    console.log("[BOOT] Prisma connected successfully");
+
+    console.log("[BOOT] Starting HTTP server...");
 
     httpServer.listen(PORT, HOST, () => {
-      console.log(` API running on ${HOST}:${PORT}`);
+      console.log(`[BOOT] Server running on http://${HOST}:${PORT}`);
     });
+
+    console.log("[BOOT] listen() executed");
   } catch (err) {
-    console.error("[FATAL STARTUP ERROR]", err);
+    console.error("[FATAL STARTUP ERROR]");
+    console.error(err);
   }
 }
 
