@@ -3,8 +3,6 @@
   "version": "0.1.0",
   "private": true,
   "main": "dist/index.js",
-  "outDir": "dist",
-  "rootDir": "src",
 
   "scripts": {
     "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
