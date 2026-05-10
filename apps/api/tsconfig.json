@@ -5,6 +5,7 @@
     "jsx": "preserve",
     "module": "esnext",
     "moduleResolution": "bundler",
+    
     "baseUrl": ".",
     "paths": {
       "@movi/ui": ["../../packages/ui/index.ts"],

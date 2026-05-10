@@ -319,20 +319,46 @@ socketAuth(passengers);
 socketAuth(drivers);
 
 // Añadir endpoint para listar rides (antes de httpServer.listen)
+// app.get("/rides", authMiddleware, async (req, res) => {
+//   const state = req.query.state as string | undefined;
+//   let where: any = {};
+//   if (state) {
+//     const states = state.split(",").map((s) => s.trim()).filter(Boolean);
+//     where = states.length === 1
+//       ? { state: states[0] as RideState }
+//       : { state: { in: states as RideState[] } };
+//   }
+//   const rides = await prisma.ride.findMany({
+//     where,
+//     include: { passenger: true, driver: true, vehicle: true },
+//     orderBy: { createdAt: "desc" },
+//   });
+//   res.json(rides);
+// });
+
 app.get("/rides", authMiddleware, async (req, res) => {
   const state = req.query.state as string | undefined;
+
   let where: any = {};
+
   if (state) {
-    const states = state.split(",").map((s) => s.trim()).filter(Boolean);
-    where = states.length === 1
-      ? { state: states[0] as RideState }
-      : { state: { in: states as RideState[] } };
+    const states = state
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+
+    where.state =
+      states.length === 1
+        ? states[0] // OK single enum
+        : { in: states }; // OK multiple
   }
+
   const rides = await prisma.ride.findMany({
     where,
     include: { passenger: true, driver: true, vehicle: true },
     orderBy: { createdAt: "desc" },
   });
+
   res.json(rides);
 });
 
@@ -1036,7 +1062,7 @@ drivers.on("connection", (socket) => {
       console.log(
         `Enviando ${pending.length} solicitudes pendientes al driver ${socket.id}`,
       );
-      pending.forEach((r) => {
+      pending.forEach((r: any) => {
         socket.emit("driver:nearby_request", {
           rideId: r.id,
           passengerId: r.passengerId,

@@ -3,6 +3,7 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useRouter } from "next/router";
 import { Button, Header } from "@movi/ui";
 import LeafletMap from "../../../packages/ui/LeafletMap";
+import { buildStateQuery } from "../utils/query";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
 const CLIENT_RIDE_SNAPSHOT_KEY = "movi:client:rideSnapshot";
@@ -188,9 +189,12 @@ export default function ClientPage() {
       }
 
       try {
-        const res = await fetch(`${API_URL}/rides?state=ASIGNADO,EN_CURSO`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
+        const res = await fetch(
+          `${API_URL}/rides?${buildStateQuery(["ASIGNADO", "EN_CURSO"])}`,
+          {
+            headers: { Authorization: `Bearer ${token}` },
+          },
+        );
         if (!res.ok) return;
         const rides = await res.json();
         if (Array.isArray(rides) && rides.length > 0) {
@@ -409,9 +413,12 @@ export default function ClientPage() {
         if (token) {
           (async () => {
             try {
-              const res = await fetch(`${API_URL}/rides?state=ASIGNADO,EN_CURSO`, {
-                headers: { Authorization: `Bearer ${token}` },
-              });
+              const res = await fetch(
+                `${API_URL}/rides?${buildStateQuery(["ASIGNADO", "EN_CURSO"])}`,
+                {
+                  headers: { Authorization: `Bearer ${token}` },
+                },
+              );
               if (res.ok) {
                 const rides = await res.json();
                 if (rides && rides.length > 0) {
