@@ -1282,24 +1282,34 @@ passengers.on("connection", (socket) => {
 // ---------------------
 // Server
 // ---------------------
-const PORT = Number(process.env.PORT) || 4000;
-const HOST = process.env.HOST || "0.0.0.0";
+const PORT = Number(process.env.PORT) || 8080;
+const HOST = "0.0.0.0";
 
-httpServer.listen(PORT, HOST, () => {
-  console.log(
-    `API + Socket.IO + Prisma (rides/users/vehicles) - http://${HOST}:${PORT}`,
-  );
-  console.log("Server is now running and accepting connections");
-});
+async function startServer() {
+  try {
+    console.log("[INIT] Connecting Prisma...");
 
-process.on("uncaughtException", (error) => {
-  console.error("Uncaught Exception:", error);
-  process.exit(1);
-});
+    await prisma.$connect();
 
-process.on("unhandledRejection", (reason, promise) => {
-  console.error("Unhandled Rejection at:", promise, "reason:", reason);
-  process.exit(1);
-});
+    console.log("[INIT] Prisma connected");
+
+    httpServer.listen(PORT, HOST, () => {
+      console.log(` API running on ${HOST}:${PORT}`);
+    });
+  } catch (err) {
+    console.error("[FATAL STARTUP ERROR]", err);
+  }
+}
+
+startServer();
+// process.on("uncaughtException", (error) => {
+//   console.error("Uncaught Exception:", error);
+//   process.exit(1);
+// });
+
+// process.on("unhandledRejection", (reason, promise) => {
+//   console.error("Unhandled Rejection at:", promise, "reason:", reason);
+//   process.exit(1);
+// });
 
 console.log(`Attempting to listen on port ${PORT}...`);
