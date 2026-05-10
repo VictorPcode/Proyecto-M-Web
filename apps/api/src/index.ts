@@ -1303,5 +1303,3 @@ process.on("unhandledRejection", (reason, promise) => {
 });
 
 console.log(`Attempting to listen on port ${PORT}...`);
-
-console.log("After httpServer.listen() call");
