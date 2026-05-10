@@ -382,9 +382,9 @@ process.on('unhandledRejection', (reason, promise) => {
 });
 console.log('[INIT] Iniciando servidor HTTP en puerto', PORT);
 httpServer.listen(PORT, () => {
-    console.log(`✅ API + Socket.IO + Prisma (rides/users/vehicles) → http://localhost:${PORT}`);
+    console.log(` API + Socket.IO + Prisma (rides/users/vehicles) → http://localhost:${PORT}`);
     console.log('[INIT] Servidor escuchando correctamente');
 }).on('error', (err) => {
-    console.error('❌ Server error:', err);
+    console.error(' Server error:', err);
     process.exit(1);
 });
