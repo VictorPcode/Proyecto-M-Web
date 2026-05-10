@@ -87,11 +87,16 @@ function authMiddleware(
   res: express.Response,
   next: express.NextFunction,
 ) {
-  const auth = Array.isArray(req.headers.authorization)
-  ? req.headers.authorization[0]
-  : req.headers.authorization;
+  const authHeader = req.headers.authorization;
+
+  const auth = Array.isArray(authHeader)
+    ? authHeader[0]
+    : authHeader;
+
   const token = auth?.startsWith("Bearer ") ? auth.slice(7) : undefined;
+
   if (!token) return res.status(401).json({ error: "missing_token" });
+
   try {
     const payload = jwt.verify(token, JWT_SECRET) as any;
     (req as any).user = { id: payload.sub, role: payload.role };
@@ -1272,8 +1277,11 @@ passengers.on("connection", (socket) => {
 const PORT = Number(process.env.PORT) || 4000;
 const HOST = process.env.HOST || "0.0.0.0";
 
-httpServer.listen(PORT, () => {
-  console.log(`API running on port ${PORT}`);
+httpServer.listen(PORT, HOST, () => {
+  console.log(
+    `API + Socket.IO + Prisma (rides/users/vehicles) - http://${HOST}:${PORT}`,
+  );
+  console.log("Server is now running and accepting connections");
 });
 
 process.on("uncaughtException", (error) => {
@@ -1287,10 +1295,5 @@ process.on("unhandledRejection", (reason, promise) => {
 });
 
 console.log(`Attempting to listen on port ${PORT}...`);
-httpServer.listen(PORT, HOST, () => {
-  console.log(
-    `API + Socket.IO + Prisma (rides/users/vehicles) - http://${HOST}:${PORT}`,
-  );
-  console.log("Server is now running and accepting connections");
-});
+
 console.log("After httpServer.listen() call");
