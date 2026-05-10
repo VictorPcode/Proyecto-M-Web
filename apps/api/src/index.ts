@@ -1036,13 +1036,10 @@ drivers.on("connection", (socket) => {
       console.log(
         `Enviando ${pending.length} solicitudes pendientes al driver ${socket.id}`,
       );
-      pending.forEach((r: Awaited<typeof pending>[number]) => {
+      pending.forEach((r) => {
         socket.emit("driver:nearby_request", {
           rideId: r.id,
           passengerId: r.passengerId,
-
-
-
           passengerName: r.passenger?.name || "Pasajero",
           origin: { lat: r.originLat, lng: r.originLng },
           destination: { lat: r.destLat, lng: r.destLng },
