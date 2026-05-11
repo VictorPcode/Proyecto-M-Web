@@ -1,15 +1,17 @@
 {
+  "extends": "../../tsconfig.json",
+
   "compilerOptions": {
     "target": "ES2020",
     "module": "CommonJS",
-    "moduleResolution": "Node",
-
-    "rootDir": "src",
     "outDir": "dist",
-
-    "esModuleInterop": true,
+    "rootDir": "src",
+    "noEmit": false,
+    "composite": true,
+    "declaration": true,
     "skipLibCheck": true,
-
+    "moduleResolution": "bundler",
+    "esModuleInterop": true,
     "strict": false,
     "types": ["node"]
   },
