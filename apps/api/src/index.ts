@@ -13,7 +13,6 @@ import crypto from "crypto";
 import nodemailer from "nodemailer";
 
 
-
 // In-memory password reset token store: token -> { userId, expiresAt }
 const resetTokens = new Map<string, { userId: string; expiresAt: number }>();
 
@@ -43,7 +42,7 @@ declare global {
 
 console.log("[INIT] Creando app Express...");
 // Enum temporal mientras no se regenere el cliente Prisma
-enum RideState {
+export enum RideState {
   PENDIENTE = "PENDIENTE",
   ASIGNADO = "ASIGNADO",
   EN_CURSO = "EN_CURSO",
@@ -336,6 +335,8 @@ socketAuth(drivers);
 //   res.json(rides);
 // });
 
+
+
 app.get("/rides", authMiddleware, async (req, res) => {
   const state = req.query.state as string | undefined;
 
@@ -345,23 +346,31 @@ app.get("/rides", authMiddleware, async (req, res) => {
     const states = state
       .split(",")
       .map((s) => s.trim())
-      .filter(Boolean);
+      .filter(Boolean) as RideState[];
 
-    where.state =
-      states.length === 1
-        ? states[0] // OK single enum
-        : { in: states }; // OK multiple
+    if (states.length === 1) {
+      where.state = states[0];
+    } else {
+      where.state = {
+        in: states,
+      };
+    }
   }
 
   const rides = await prisma.ride.findMany({
     where,
-    include: { passenger: true, driver: true, vehicle: true },
-    orderBy: { createdAt: "desc" },
+    include: {
+      passenger: true,
+      driver: true,
+      vehicle: true,
+    },
+    orderBy: {
+      createdAt: "desc",
+    },
   });
 
   res.json(rides);
 });
-
 // Obtener perfil de usuario actual con vehiculo
 app.get("/me", authMiddleware, async (req, res) => {
   try {
