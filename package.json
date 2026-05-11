@@ -13,7 +13,7 @@
     "dev:local": "pnpm run dev:free-ports && concurrently \"pnpm --filter api dev\" \"pnpm --filter web dev\"",
     "dev:mobile": "pnpm run dev:free-ports && concurrently \"pnpm --filter api dev\" \"pnpm --filter web dev\"",
     "dev": "pnpm run dev:local",
-    "build": "pnpm prisma generate && pnpm -r build"
+    "build": "pnpm prisma generate && pnpm --filter web build && pnpm --filter api build"
     
   },
   "devDependencies": {
