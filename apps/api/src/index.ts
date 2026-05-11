@@ -335,26 +335,25 @@ socketAuth(drivers);
 //   res.json(rides);
 // });
 
-
-
 app.get("/rides", authMiddleware, async (req, res) => {
-  const state = req.query.state as string | undefined;
+  const rawState = req.query.state;
 
   let where: any = {};
 
-  if (state) {
-    const states = state
-      .split(",")
+  if (rawState) {
+    const statesArray =
+      Array.isArray(rawState)
+        ? rawState
+        : String(rawState).split(",");
+
+    const states = statesArray
       .map((s) => s.trim())
       .filter(Boolean) as RideState[];
 
-    if (states.length === 1) {
-      where.state = states[0];
-    } else {
-      where.state = {
-        in: states,
-      };
-    }
+    where.state =
+      states.length === 1
+        ? states[0]
+        : { in: states };
   }
 
   const rides = await prisma.ride.findMany({
@@ -371,6 +370,7 @@ app.get("/rides", authMiddleware, async (req, res) => {
 
   res.json(rides);
 });
+
 // Obtener perfil de usuario actual con vehiculo
 app.get("/me", authMiddleware, async (req, res) => {
   try {
