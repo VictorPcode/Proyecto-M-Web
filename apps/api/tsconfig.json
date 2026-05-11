@@ -10,10 +10,14 @@
     "composite": true,
     "declaration": true,
     "skipLibCheck": true,
-    "moduleResolution": "bundler",
+    "moduleResolution": "node",
     "esModuleInterop": true,
     "strict": false,
-    "types": ["node"]
+    "types": ["node"],
+    "baseUrl": ".",
+    "paths": {
+      "@movi/types": ["../../packages/types/src/index"]
+    }
   },
   "include": ["src"],
   "exclude": ["node_modules"]
