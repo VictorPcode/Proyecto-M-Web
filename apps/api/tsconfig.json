@@ -1,24 +1,27 @@
 {
   "extends": "../../tsconfig.json",
-
   "compilerOptions": {
-    "target": "ES2020",
-    "module": "CommonJS",
-    "outDir": "dist",
-    "rootDir": "src",
-    "noEmit": false,
-    "composite": true,
-    "declaration": true,
-    "skipLibCheck": true,
-    "moduleResolution": "node",
-    "esModuleInterop": true,
-    "strict": false,
     "types": ["node"],
+    "module": "Node16",
+    "moduleResolution": "Node16",
+
     "baseUrl": ".",
+
     "paths": {
-      "@movi/types": ["../../packages/types/src/index"]
-    }
+      "@movi/types": [
+        "../../packages/types/dist/index.d.ts"
+      ]
+    },
+
+    "rootDir": "src",
+    "outDir": "dist",
+
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "strict": false
   },
-  "include": ["src"],
-  "exclude": ["node_modules"]
+
+  "include": ["src/**/*"],
+
+  "exclude": ["node_modules", "dist"]
 }

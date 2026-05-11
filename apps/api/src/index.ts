@@ -340,15 +340,11 @@ app.get("/rides", authMiddleware, async (req, res) => {
 
   let where: any = {};
 
-  if (rawState) {
-    const statesArray =
-      Array.isArray(rawState)
-        ? rawState
-        : String(rawState).split(",");
-
-    const states = statesArray
+  if (typeof rawState === "string") {
+    const states = rawState
+      .split(",")
       .map((s) => s.trim())
-      .filter(Boolean) as RideState[];
+      .filter(Boolean);
 
     where.state =
       states.length === 1
