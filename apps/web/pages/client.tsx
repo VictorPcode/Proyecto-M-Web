@@ -795,11 +795,13 @@ export default function ClientPage() {
 
       const data = await response.json();
 
-      if (!data.features || data.features.length === 0) {
+      const suggestions = Array.isArray(data) ? data : data.features;
+
+      if (!Array.isArray(suggestions) || suggestions.length === 0) {
         return [];
       }
 
-      return data as Suggestion[];
+      return suggestions as Suggestion[];
     } catch (error) {
       console.error("Geocoding error:", error);
       setGeocodingError("No se pudo conectar con el servidor de búsqueda.");
