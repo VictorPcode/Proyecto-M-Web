@@ -98,41 +98,6 @@ function authMiddleware(req: express.Request, res: express.Response, next: expre
   }
 }
 
-// AUTH LOGIN =======================
-app.post("/auth/login", async (req, res) => {
-  try {
-    const { email, password } = req.body;
-
-    const user = await prisma.user.findUnique({ where: { email } });
-
-    if (!user) return res.status(401).json({ error: "invalid_credentials" });
-
-    const ok = await bcrypt.compare(password, user.password);
-
-    if (!ok) return res.status(401).json({ error: "invalid_credentials" });
-
-    const token = jwt.sign(
-      { sub: user.id, role: user.role },
-      JWT_SECRET,
-      { expiresIn: "7d" }
-    );
-
-    return res.json({
-      token,
-      user: {
-        id: user.id,
-        email: user.email,
-        role: user.role,
-      },
-    });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "login_failed" });
-  }
-});
-// =======================
-
-
 // =======================
 
 app.get("/auth/admin/setup", async (req, res) => {
@@ -147,6 +112,106 @@ app.get("/auth/admin/setup", async (req, res) => {
 
 // =======================
 
+
+// =====================
+// AUTH LOGIN
+// =====================
+
+app.post("/auth/login", async (req, res) => {
+  try {
+    const { email, password } = req.body;
+
+    if (!email || !password) {
+      return res.status(400).json({
+        error: "missing_credentials",
+      });
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { email },
+    });
+
+    if (!user) {
+      return res.status(401).json({
+        error: "invalid_credentials",
+      });
+    }
+
+    const valid = bcrypt.compareSync(password, user.password);
+
+    if (!valid) {
+      return res.status(401).json({
+        error: "invalid_credentials",
+      });
+    }
+
+    // conductor pendiente
+    if (
+      user.role === "DRIVER" &&
+      (!user.approved || user.documentStatus !== "APPROVED")
+    ) {
+      return res.status(403).json({
+        error: "driver_not_approved",
+        message: "Tu cuenta de conductor aún no fue aprobada por un administrador.",
+      });
+    }
+
+    const token = jwt.sign(
+      {
+        sub: user.id,
+        role: user.role,
+      },
+      JWT_SECRET,
+      {
+        expiresIn: "7d",
+      }
+    );
+
+    const { password: _, ...safeUser } = user;
+
+    return res.json({
+      token,
+      user: safeUser,
+    });
+  } catch (err) {
+    console.error("LOGIN ERROR:", err);
+
+    return res.status(500).json({
+      error: "login_failed",
+    });
+  }
+});
+
+// =====================
+// ADMIN SETUP CHECK
+// =====================
+
+app.post("/auth/admin/setup", async (_req, res) => {
+  try {
+    const admin = await prisma.user.findFirst({
+      where: {
+        role: "ADMIN",
+      },
+    });
+
+    if (admin) {
+      return res.status(409).json({
+        error: "admin_exists",
+      });
+    }
+
+    return res.json({
+      ok: true,
+      setup: true,
+    });
+  } catch (err) {
+    console.error("ADMIN SETUP ERROR:", err);
+
+    return res.status(500).json({
+      error: "setup_failed",
+    });
+  }
+});
 
 // =====================
 // USERS CREATE / UPDATE (FIX PRINCIPAL)
