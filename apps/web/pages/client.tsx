@@ -55,7 +55,11 @@ type Ride = {
   passengerId?: string;
 };
 
-type Suggestion = { place_name: string; center: [number, number] };
+type Suggestion = {
+  display_name: string;
+  lat: string;
+  lon: string;
+};
 
 type ChatMessage = {
   rideId: string;
@@ -236,7 +240,7 @@ export default function ClientPage() {
         if (nav?.wakeLock?.request) {
           wakeLock = await nav.wakeLock.request("screen");
         }
-      } catch {}
+      } catch { }
     };
     void requestWakeLock();
 
@@ -281,18 +285,18 @@ export default function ClientPage() {
       userId: user?.id,
       currentRide: currentRide
         ? {
-            id: currentRide.id,
-            state: currentRide.state,
-            originLat: currentRide.originLat,
-            originLng: currentRide.originLng,
-            destLat: currentRide.destLat,
-            destLng: currentRide.destLng,
-            estimatedFare: currentRide.estimatedFare,
-            finalFare: currentRide.finalFare,
-            driver: currentRide.driver,
-            vehicle: currentRide.vehicle,
-            passengerId: currentRide.passengerId,
-          }
+          id: currentRide.id,
+          state: currentRide.state,
+          originLat: currentRide.originLat,
+          originLng: currentRide.originLng,
+          destLat: currentRide.destLat,
+          destLng: currentRide.destLng,
+          estimatedFare: currentRide.estimatedFare,
+          finalFare: currentRide.finalFare,
+          driver: currentRide.driver,
+          vehicle: currentRide.vehicle,
+          passengerId: currentRide.passengerId,
+        }
         : null,
       // routeGeometry excluded to prevent localStorage quota exceeded
       originQuery,
@@ -345,8 +349,8 @@ export default function ClientPage() {
             );
             if (res.ok) {
               const data = await res.json();
-              if (data.place_name) {
-                setOriginQuery(data.place_name);
+              if (data.display_name) {
+                setOriginQuery(data.display_name);
               }
             }
           } catch (err) {
@@ -407,7 +411,7 @@ export default function ClientPage() {
       const onConnect = () => {
         setMessages((m) => [...m, `Connected ${socket.id}`]);
         setDebugStatus(`conectado: ${socket.id}`);
-        
+
         // Fetch active ride on reconnect to restore state after page reload
         const token = typeof window !== "undefined" ? localStorage.getItem("movi:token") : null;
         if (token) {
@@ -566,7 +570,7 @@ export default function ClientPage() {
         if (!Array.isArray(rides) || rides.length === 0) {
           clearRideState();
         }
-      } catch {}
+      } catch { }
     }, 4000);
 
     const forceCloseTimer = setTimeout(() => {
@@ -620,13 +624,13 @@ export default function ClientPage() {
           originQuery
             ? Promise.resolve(null)
             : fetch(`${API_URL}/reverse-geocode?lat=${origin[1]}&lng=${origin[0]}`, {
-                headers: { Authorization: `Bearer ${token}` },
-              }),
+              headers: { Authorization: `Bearer ${token}` },
+            }),
           destQuery
             ? Promise.resolve(null)
             : fetch(`${API_URL}/reverse-geocode?lat=${dest[1]}&lng=${dest[0]}`, {
-                headers: { Authorization: `Bearer ${token}` },
-              }),
+              headers: { Authorization: `Bearer ${token}` },
+            }),
         ]);
         if (oRes && oRes.ok) {
           const data = await oRes.json();
@@ -669,9 +673,9 @@ export default function ClientPage() {
     const a =
       Math.sin(dLat / 2) * Math.sin(dLat / 2) +
       Math.cos(toRad(origin[1])) *
-        Math.cos(toRad(dest[1])) *
-        Math.sin(dLng / 2) *
-        Math.sin(dLng / 2);
+      Math.cos(toRad(dest[1])) *
+      Math.sin(dLng / 2) *
+      Math.sin(dLng / 2);
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     return r * c;
   };
@@ -794,7 +798,7 @@ export default function ClientPage() {
         return [];
       }
 
-      return data.features as Suggestion[];
+      return data as Suggestion[];
     } catch (error) {
       console.error("Geocoding error:", error);
       setGeocodingError("No se pudo conectar con el servidor de búsqueda.");
@@ -812,7 +816,7 @@ export default function ClientPage() {
 
       const res = await fetch(
         `http://router.project-osrm.org/route/v1/driving/${origin[0]},${origin[1]};${dest[0]},${dest[1]}?` +
-          `geometries=geojson&overview=full&steps=true`,
+        `geometries=geojson&overview=full&steps=true`,
       );
 
       const data = await res.json();
@@ -864,10 +868,13 @@ export default function ClientPage() {
   };
 
   const selectOriginSuggestion = async (feature: Suggestion) => {
-    const [lng, lat] = feature.center;
-    setOriginQuery(feature.place_name);
+    const lng = Number(feature.lon);
+    const lat = Number(feature.lat);
+
+    setOriginQuery(feature.display_name);
     setOriginCoords([lng, lat]);
     setOriginSuggestions([]);
+
     if (destCoords) {
       await fetchDirections([lng, lat], destCoords);
     }
@@ -902,10 +909,13 @@ export default function ClientPage() {
   };
 
   const selectDestSuggestion = async (feature: Suggestion) => {
-    const [lng, lat] = feature.center;
-    setDestQuery(feature.place_name);
+    const lng = Number(feature.lon);
+    const lat = Number(feature.lat);
+
+    setDestQuery(feature.display_name);
     setDestCoords([lng, lat]);
     setDestSuggestions([]);
+
     if (originCoords) {
       await fetchDirections(originCoords, [lng, lat]);
     }
@@ -1015,9 +1025,9 @@ export default function ClientPage() {
         markers={markers}
         route={
           originCoords &&
-          destCoords &&
-          routeGeometry &&
-          routeGeometry.length > 0
+            destCoords &&
+            routeGeometry &&
+            routeGeometry.length > 0
             ? routeGeometry
             : undefined
         }
@@ -1030,262 +1040,262 @@ export default function ClientPage() {
         currentRide.state === "PENDIENTE" ||
         currentRide.state === "CANCELADO") &&
         !waitingDriver && (
-        <div
-          style={{
-            position: "fixed",
-            top: isMobile ? "auto" : "32px",
-            bottom: isMobile ? "16px" : "auto",
-            left: isMobile ? "12px" : "50%",
-            right: isMobile ? "12px" : "auto",
-            transform: isMobile ? "none" : "translateX(-50%)",
-            zIndex: 1000,
-            background: "rgba(255, 255, 255, 0.98)",
-            padding: isMobile ? "16px" : "20px 24px",
-            borderRadius: isMobile ? "18px 18px 14px 14px" : "20px",
-            backdropFilter: "blur(20px)",
-            boxShadow:
-              "0 8px 32px rgba(0, 0, 0, 0.12), 0 2px 8px rgba(0, 0, 0, 0.08)",
-            width: isMobile ? "auto" : "420px",
-            maxWidth: isMobile ? "none" : "calc(100vw - 64px)",
-            maxHeight: isMobile ? "46vh" : "none",
-            overflowY: isMobile ? "auto" : "visible",
-          }}
-        >
           <div
             style={{
-              fontWeight: 600,
-              marginBottom: 16,
-              fontSize: 20,
-              color: "#000",
-              letterSpacing: "-0.5px",
+              position: "fixed",
+              top: isMobile ? "auto" : "32px",
+              bottom: isMobile ? "16px" : "auto",
+              left: isMobile ? "12px" : "50%",
+              right: isMobile ? "12px" : "auto",
+              transform: isMobile ? "none" : "translateX(-50%)",
+              zIndex: 1000,
+              background: "rgba(255, 255, 255, 0.98)",
+              padding: isMobile ? "16px" : "20px 24px",
+              borderRadius: isMobile ? "18px 18px 14px 14px" : "20px",
+              backdropFilter: "blur(20px)",
+              boxShadow:
+                "0 8px 32px rgba(0, 0, 0, 0.12), 0 2px 8px rgba(0, 0, 0, 0.08)",
+              width: isMobile ? "auto" : "420px",
+              maxWidth: isMobile ? "none" : "calc(100vw - 64px)",
+              maxHeight: isMobile ? "46vh" : "none",
+              overflowY: isMobile ? "auto" : "visible",
             }}
           >
-            {user ? `Hola, ${user.name}` : "¿A dónde vamos?"}
-          </div>
-
-          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            <div style={{ position: "relative" }}>
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "12px",
-                  padding: "14px 16px",
-                  background: "#f5f5f7",
-                  borderRadius: "12px",
-                  border: "2px solid transparent",
-                  transition: "all 0.2s ease",
-                }}
-              >
-                <div
-                  style={{
-                    width: "8px",
-                    height: "8px",
-                    borderRadius: "50%",
-                    background: "#007AFF",
-                  }}
-                ></div>
-                <input
-                  value={originQuery}
-                  onChange={(e) => handleOriginChange(e.target.value)}
-                  placeholder="Punto de partida"
-                  style={{
-                    flex: 1,
-                    border: "none",
-                    background: "transparent",
-                    color: "#000",
-                    fontSize: 15,
-                    fontWeight: 500,
-                    outline: "none",
-                    fontFamily:
-                      '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-                  }}
-                />
-              </div>
-              {originSuggestions.length > 0 && (
-                <div
-                  style={{
-                    position: "absolute",
-                    top: "100%",
-                    left: 0,
-                    right: 0,
-                    background: "#fff",
-                    borderRadius: 12,
-                    marginTop: 8,
-                    maxHeight: 240,
-                    overflowY: "auto",
-                    zIndex: 1001,
-                    boxShadow: "0 8px 24px rgba(0,0,0,0.15)",
-                    border: "1px solid rgba(0,0,0,0.08)",
-                  }}
-                >
-                  {originSuggestions.map((s, i) => (
-                    <div
-                      key={i}
-                      onClick={() => selectOriginSuggestion(s)}
-                      style={{
-                        padding: "12px 16px",
-                        cursor: "pointer",
-                        borderBottom:
-                          i < originSuggestions.length - 1
-                            ? "1px solid #f0f0f0"
-                            : "none",
-                        fontSize: 14,
-                        color: "#000",
-                        fontWeight: 500,
-                        transition: "background 0.15s ease",
-                      }}
-                      onMouseEnter={(e) =>
-                        (e.currentTarget.style.background = "#f5f5f7")
-                      }
-                      onMouseLeave={(e) =>
-                        (e.currentTarget.style.background = "transparent")
-                      }
-                    >
-                      {s.place_name}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <div style={{ position: "relative" }}>
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "12px",
-                  padding: "14px 16px",
-                  background: "#f5f5f7",
-                  borderRadius: "12px",
-                  border: "2px solid transparent",
-                  transition: "all 0.2s ease",
-                }}
-              >
-                <div
-                  style={{
-                    width: "8px",
-                    height: "8px",
-                    borderRadius: "2px",
-                    background: "#FF3B30",
-                  }}
-                ></div>
-                <input
-                  value={destQuery}
-                  onChange={(e) => handleDestChange(e.target.value)}
-                  placeholder="¿A dónde vas?"
-                  style={{
-                    flex: 1,
-                    border: "none",
-                    background: "transparent",
-                    color: "#000",
-                    fontSize: 15,
-                    fontWeight: 500,
-                    outline: "none",
-                    fontFamily:
-                      '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-                  }}
-                />
-              </div>
-              {destSuggestions.length > 0 && (
-                <div
-                  style={{
-                    position: "absolute",
-                    top: "100%",
-                    left: 0,
-                    right: 0,
-                    background: "#fff",
-                    borderRadius: 12,
-                    marginTop: 8,
-                    maxHeight: 240,
-                    overflowY: "auto",
-                    zIndex: 1001,
-                    boxShadow: "0 8px 24px rgba(0,0,0,0.15)",
-                    border: "1px solid rgba(0,0,0,0.08)",
-                  }}
-                >
-                  {destSuggestions.map((s, i) => (
-                    <div
-                      key={i}
-                      onClick={() => selectDestSuggestion(s)}
-                      style={{
-                        padding: "12px 16px",
-                        cursor: "pointer",
-                        borderBottom:
-                          i < destSuggestions.length - 1
-                            ? "1px solid #f0f0f0"
-                            : "none",
-                        fontSize: 14,
-                        color: "#000",
-                        fontWeight: 500,
-                        transition: "background 0.15s ease",
-                      }}
-                      onMouseEnter={(e) =>
-                        (e.currentTarget.style.background = "#f5f5f7")
-                      }
-                      onMouseLeave={(e) =>
-                        (e.currentTarget.style.background = "transparent")
-                      }
-                    >
-                      {s.place_name}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {geocoding && (
-              <div
-                style={{
-                  color: "#86868b",
-                  fontSize: 13,
-                  textAlign: "center",
-                  marginTop: 4,
-                }}
-              >
-                Buscando...
-              </div>
-            )}
-
-            {geocodingError && !geocoding && (
-              <div
-                style={{
-                  color: "#FF3B30",
-                  fontSize: 12,
-                  textAlign: "center",
-                  marginTop: 4,
-                  padding: "6px 12px",
-                  background: "#fff1f0",
-                  borderRadius: 8,
-                }}
-              >
-                {geocodingError}
-              </div>
-            )}
-
-            {/* Botón Solicitar viaje */}
-            <Button
-              onClick={requestRide}
-              disabled={waitingDriver}
+            <div
               style={{
-                background: waitingDriver ? "#86868b" : "#1c1c1cff",
-                color: "white",
-                padding: "14px 24px",
-                borderRadius: "12px",
-                fontSize: 15,
                 fontWeight: 600,
-                border: "none",
-                boxShadow: waitingDriver ? "none" : "0 4px 16px rgba(0, 122, 255, 0.4)",
-                cursor: waitingDriver ? "not-allowed" : "pointer",
-                width: "100%",
-                marginTop: 8,
+                marginBottom: 16,
+                fontSize: 20,
+                color: "#000",
+                letterSpacing: "-0.5px",
               }}
             >
-              {waitingDriver ? "Buscando conductor..." : "Solicitar viaje"}
-            </Button>
+              {user ? `Hola, ${user.name}` : "¿A dónde vamos?"}
+            </div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              <div style={{ position: "relative" }}>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "12px",
+                    padding: "14px 16px",
+                    background: "#f5f5f7",
+                    borderRadius: "12px",
+                    border: "2px solid transparent",
+                    transition: "all 0.2s ease",
+                  }}
+                >
+                  <div
+                    style={{
+                      width: "8px",
+                      height: "8px",
+                      borderRadius: "50%",
+                      background: "#007AFF",
+                    }}
+                  ></div>
+                  <input
+                    value={originQuery}
+                    onChange={(e) => handleOriginChange(e.target.value)}
+                    placeholder="Punto de partida"
+                    style={{
+                      flex: 1,
+                      border: "none",
+                      background: "transparent",
+                      color: "#000",
+                      fontSize: 15,
+                      fontWeight: 500,
+                      outline: "none",
+                      fontFamily:
+                        '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+                    }}
+                  />
+                </div>
+                {originSuggestions.length > 0 && (
+                  <div
+                    style={{
+                      position: "absolute",
+                      top: "100%",
+                      left: 0,
+                      right: 0,
+                      background: "#fff",
+                      borderRadius: 12,
+                      marginTop: 8,
+                      maxHeight: 240,
+                      overflowY: "auto",
+                      zIndex: 1001,
+                      boxShadow: "0 8px 24px rgba(0,0,0,0.15)",
+                      border: "1px solid rgba(0,0,0,0.08)",
+                    }}
+                  >
+                    {originSuggestions.map((s, i) => (
+                      <div
+                        key={i}
+                        onClick={() => selectOriginSuggestion(s)}
+                        style={{
+                          padding: "12px 16px",
+                          cursor: "pointer",
+                          borderBottom:
+                            i < originSuggestions.length - 1
+                              ? "1px solid #f0f0f0"
+                              : "none",
+                          fontSize: 14,
+                          color: "#000",
+                          fontWeight: 500,
+                          transition: "background 0.15s ease",
+                        }}
+                        onMouseEnter={(e) =>
+                          (e.currentTarget.style.background = "#f5f5f7")
+                        }
+                        onMouseLeave={(e) =>
+                          (e.currentTarget.style.background = "transparent")
+                        }
+                      >
+                        {s.display_name}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div style={{ position: "relative" }}>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "12px",
+                    padding: "14px 16px",
+                    background: "#f5f5f7",
+                    borderRadius: "12px",
+                    border: "2px solid transparent",
+                    transition: "all 0.2s ease",
+                  }}
+                >
+                  <div
+                    style={{
+                      width: "8px",
+                      height: "8px",
+                      borderRadius: "2px",
+                      background: "#FF3B30",
+                    }}
+                  ></div>
+                  <input
+                    value={destQuery}
+                    onChange={(e) => handleDestChange(e.target.value)}
+                    placeholder="¿A dónde vas?"
+                    style={{
+                      flex: 1,
+                      border: "none",
+                      background: "transparent",
+                      color: "#000",
+                      fontSize: 15,
+                      fontWeight: 500,
+                      outline: "none",
+                      fontFamily:
+                        '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+                    }}
+                  />
+                </div>
+                {destSuggestions.length > 0 && (
+                  <div
+                    style={{
+                      position: "absolute",
+                      top: "100%",
+                      left: 0,
+                      right: 0,
+                      background: "#fff",
+                      borderRadius: 12,
+                      marginTop: 8,
+                      maxHeight: 240,
+                      overflowY: "auto",
+                      zIndex: 1001,
+                      boxShadow: "0 8px 24px rgba(0,0,0,0.15)",
+                      border: "1px solid rgba(0,0,0,0.08)",
+                    }}
+                  >
+                    {destSuggestions.map((s, i) => (
+                      <div
+                        key={i}
+                        onClick={() => selectDestSuggestion(s)}
+                        style={{
+                          padding: "12px 16px",
+                          cursor: "pointer",
+                          borderBottom:
+                            i < destSuggestions.length - 1
+                              ? "1px solid #f0f0f0"
+                              : "none",
+                          fontSize: 14,
+                          color: "#000",
+                          fontWeight: 500,
+                          transition: "background 0.15s ease",
+                        }}
+                        onMouseEnter={(e) =>
+                          (e.currentTarget.style.background = "#f5f5f7")
+                        }
+                        onMouseLeave={(e) =>
+                          (e.currentTarget.style.background = "transparent")
+                        }
+                      >
+                        {s.display_name}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {geocoding && (
+                <div
+                  style={{
+                    color: "#86868b",
+                    fontSize: 13,
+                    textAlign: "center",
+                    marginTop: 4,
+                  }}
+                >
+                  Buscando...
+                </div>
+              )}
+
+              {geocodingError && !geocoding && (
+                <div
+                  style={{
+                    color: "#FF3B30",
+                    fontSize: 12,
+                    textAlign: "center",
+                    marginTop: 4,
+                    padding: "6px 12px",
+                    background: "#fff1f0",
+                    borderRadius: 8,
+                  }}
+                >
+                  {geocodingError}
+                </div>
+              )}
+
+              {/* Botón Solicitar viaje */}
+              <Button
+                onClick={requestRide}
+                disabled={waitingDriver}
+                style={{
+                  background: waitingDriver ? "#86868b" : "#1c1c1cff",
+                  color: "white",
+                  padding: "14px 24px",
+                  borderRadius: "12px",
+                  fontSize: 15,
+                  fontWeight: 600,
+                  border: "none",
+                  boxShadow: waitingDriver ? "none" : "0 4px 16px rgba(0, 122, 255, 0.4)",
+                  cursor: waitingDriver ? "not-allowed" : "pointer",
+                  width: "100%",
+                  marginTop: 8,
+                }}
+              >
+                {waitingDriver ? "Buscando conductor..." : "Solicitar viaje"}
+              </Button>
+            </div>
           </div>
-        </div>
-      )}
+        )}
 
       {/* Driver Info Card - Cuando el viaje está asignado */}
       {currentRide &&
@@ -1858,73 +1868,73 @@ export default function ClientPage() {
       {/* Waiting for driver - Bottom center (Uber style) */}
       {((waitingDriver && !["ASIGNADO", "EN_CURSO"].includes(currentRide?.state ?? "")) ||
         currentRide?.state === "PENDIENTE") && (
-        <div
-          style={{
-            position: "fixed",
-            bottom: "16px",
-            left: "50%",
-            transform: "translateX(-50%)",
-            zIndex: 1001,
-            background: "rgba(255, 255, 255, 0.98)",
-            padding: isMobile ? "16px" : "24px 32px",
-            borderRadius: isMobile ? "18px 18px 14px 14px" : "20px",
-            backdropFilter: "blur(20px)",
-            boxShadow: "0 12px 48px rgba(0, 0, 0, 0.2)",
-            minWidth: isMobile ? "0" : "320px",
-            width: isMobile ? "calc(100vw - 24px)" : "auto",
-            textAlign: "center",
-            transition: "bottom 0.4s cubic-bezier(0.4, 0.0, 0.2, 1)",
-            animation: "slideUp 0.4s ease-out",
-          }}
-        >
-          <div style={{ marginBottom: 16 }}>
-            <div
-              style={{
-                width: "48px",
-                height: "48px",
-                margin: "0 auto",
-                borderRadius: "50%",
-                border: "3px solid #007AFF",
-                borderTopColor: "transparent",
-                animation: "spin 1s linear infinite",
-              }}
-            ></div>
-          </div>
           <div
             style={{
-              fontSize: 18,
-              fontWeight: 600,
-              color: "#000",
-              marginBottom: 8,
+              position: "fixed",
+              bottom: "16px",
+              left: "50%",
+              transform: "translateX(-50%)",
+              zIndex: 1001,
+              background: "rgba(255, 255, 255, 0.98)",
+              padding: isMobile ? "16px" : "24px 32px",
+              borderRadius: isMobile ? "18px 18px 14px 14px" : "20px",
+              backdropFilter: "blur(20px)",
+              boxShadow: "0 12px 48px rgba(0, 0, 0, 0.2)",
+              minWidth: isMobile ? "0" : "320px",
+              width: isMobile ? "calc(100vw - 24px)" : "auto",
+              textAlign: "center",
+              transition: "bottom 0.4s cubic-bezier(0.4, 0.0, 0.2, 1)",
+              animation: "slideUp 0.4s ease-out",
             }}
           >
-            Buscando conductor
-          </div>
-          <div style={{ fontSize: 14, color: "#86868b", marginBottom: 16 }}>
-            Espera mientras un conductor acepta tu solicitud...
-          </div>
-          <button
-            onClick={() => {
-              if (currentRide) {
-                openCancelRideModal();
-              } else {
-                setWaitingDriver(false);
-              }
-            }}
-            style={{
-              background: "transparent",
-              border: "1px solid #d1d1d6",
-              borderRadius: 10,
-              padding: "10px 24px",
-              fontSize: 14,
-              color: "#ff3b30",
-              cursor: "pointer",
-              fontWeight: 500,
-            }}
-          >
-            Cancelar búsqueda
-          </button>
-          <style>{`
+            <div style={{ marginBottom: 16 }}>
+              <div
+                style={{
+                  width: "48px",
+                  height: "48px",
+                  margin: "0 auto",
+                  borderRadius: "50%",
+                  border: "3px solid #007AFF",
+                  borderTopColor: "transparent",
+                  animation: "spin 1s linear infinite",
+                }}
+              ></div>
+            </div>
+            <div
+              style={{
+                fontSize: 18,
+                fontWeight: 600,
+                color: "#000",
+                marginBottom: 8,
+              }}
+            >
+              Buscando conductor
+            </div>
+            <div style={{ fontSize: 14, color: "#86868b", marginBottom: 16 }}>
+              Espera mientras un conductor acepta tu solicitud...
+            </div>
+            <button
+              onClick={() => {
+                if (currentRide) {
+                  openCancelRideModal();
+                } else {
+                  setWaitingDriver(false);
+                }
+              }}
+              style={{
+                background: "transparent",
+                border: "1px solid #d1d1d6",
+                borderRadius: 10,
+                padding: "10px 24px",
+                fontSize: 14,
+                color: "#ff3b30",
+                cursor: "pointer",
+                fontWeight: 500,
+              }}
+            >
+              Cancelar búsqueda
+            </button>
+            <style>{`
             @keyframes spin {
               to { transform: rotate(360deg); }
             }
@@ -1939,8 +1949,8 @@ export default function ClientPage() {
               }
             }
           `}</style>
-        </div>
-      )}
+          </div>
+        )}
     </div>
   );
 }
