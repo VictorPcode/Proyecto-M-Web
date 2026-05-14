@@ -200,7 +200,16 @@ app.post(
         }
       } else {
         const hashed = bcrypt.hashSync(String(password), 10);
+        // FIX: evitar duplicados (ESTO TE FALTABA)
+        const existing = await prisma.user.findUnique({
+          where: { email },
+        });
 
+        if (existing) {
+          return res.status(409).json({
+            error: "email_exists",
+          });
+        }
         user = await prisma.user.create({
           data: {
             name,
