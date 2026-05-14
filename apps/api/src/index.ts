@@ -137,19 +137,23 @@ app.post(
       if (!isUpdate && !password) return res.status(400).json({ error: "missing password" });
       if (!name) return res.status(400).json({ error: "missing name" });
 
-      const files = (req as any).files as any;
+      const files = (req as any).files || {};
 
-      const toB64 = (f: any) => f?.[0]?.buffer?.toString("base64") ?? null;
+      const safeFile = (key: string) => {
+        const file = files?.[key];
+        if (!file || !file[0] || !file[0].buffer) return null;
+        return file[0].buffer.toString("base64");
+      };
 
-      const docCedulaVerdeFrontB64 = toB64(files?.docCedulaVerdeFront);
-      const docCedulaVerdeBackB64 = toB64(files?.docCedulaVerdeBack);
-      const docLicenseFrontB64 = toB64(files?.docLicenseFront);
-      const docLicenseBackB64 = toB64(files?.docLicenseBack);
-      const docCedulaFrontB64 = toB64(files?.docCedulaFront);
-      const docCedulaBackB64 = toB64(files?.docCedulaBack);
-      const docJudicialCertB64 = toB64(files?.docJudicialCert);
+      const docCedulaVerdeFrontB64 = safeFile("docCedulaVerdeFront");
+      const docCedulaVerdeBackB64 = safeFile("docCedulaVerdeBack");
+      const docLicenseFrontB64 = safeFile("docLicenseFront");
+      const docLicenseBackB64 = safeFile("docLicenseBack");
+      const docCedulaFrontB64 = safeFile("docCedulaFront");
+      const docCedulaBackB64 = safeFile("docCedulaBack");
+      const docJudicialCertB64 = safeFile("docJudicialCert");
 
-      const safeYear = year ? Number(year) : undefined;
+      const safeYear = year ? Number(year) : null;
       const safeCapacidad = capacidad ? Number(capacidad) : 4;
 
       let user: any;
@@ -201,6 +205,14 @@ app.post(
       } else {
         const hashed = bcrypt.hashSync(String(password), 10);
 
+        let existing = await prisma.user.findUnique({
+          where: { email },
+        });
+
+        if (existing) {
+          return res.status(409).json({ error: "email_exists" });
+        }
+
         try {
           user = await prisma.user.create({
             data: {
@@ -224,13 +236,16 @@ app.post(
             },
           });
         } catch (err: any) {
+          console.error("PRISMA CREATE ERROR:", err);
+
           if (err.code === "P2002") {
             return res.status(409).json({ error: "email_exists" });
           }
-          throw err;
+
+          return res.status(500).json({ error: "prisma_create_failed" });
         }
 
-        if (user.role === "DRIVER" && placa) {
+        if (user && user.role === "DRIVER" && placa) {
           await prisma.vehicle.create({
             data: {
               placa,
@@ -246,11 +261,14 @@ app.post(
         }
       }
 
-      const { password: _, ...safe } = user;
+      const { password: _, ...safe } = user ?? {};
       return res.json(safe);
     } catch (err) {
       console.error("USER CREATE/UPDATE ERROR:", err);
-      return res.status(500).json({ error: "failed" });
+      return res.status(500).json({
+        error: "failed",
+        details: err instanceof Error ? err.message : err,
+      });
     }
   }
 );
