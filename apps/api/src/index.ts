@@ -566,7 +566,7 @@ app.get("/geocode", async (req, res) => {
     const limit = Number(req.query.limit || 5);
 
     if (!query) {
-      return res.status(400).json({ error: "missing_query" });
+      return res.json([]); // mejor que error
     }
 
     const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(
@@ -581,10 +581,10 @@ app.get("/geocode", async (req, res) => {
 
     const data = await response.json();
 
-    return res.json(data);
+    return res.json(data || []);
   } catch (err) {
     console.error("GEOCODE ERROR:", err);
-    return res.status(500).json({ error: "geocode_failed" });
+    return res.json([]); // importante para UX
   }
 });
 
