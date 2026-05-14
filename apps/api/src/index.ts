@@ -22,10 +22,10 @@ function createMailTransporter() {
   const user = process.env.SMTP_USER;
   const pass = process.env.SMTP_PASS;
   if (!host || !user || !pass) return null;
-  return nodemailer.createTransport({ 
-    host, 
-    port, 
-    secure: port === 465, 
+  return nodemailer.createTransport({
+    host,
+    port,
+    secure: port === 465,
     auth: { user, pass },
     tls: { rejectUnauthorized: false }
   });
@@ -190,19 +190,19 @@ app.get("/geocode", async (req, res) => {
               locality ||
               result.formatted_address.split(",")[0];
 
-              // Filtrar códigos numéricos y Plus Codes
-              if (displayName.match(/^\d{5,}$/) || isPlusCode(displayName)) {
+            // Filtrar códigos numéricos y Plus Codes
+            if (displayName.match(/^\d{5,}$/) || isPlusCode(displayName)) {
               displayName = locality || result.formatted_address.split(",")[0];
             }
 
-              const cleanDisplayName = cleanAddressLabel(displayName) || cleanAddressLabel(locality) || "Ubicación";
+            const cleanDisplayName = cleanAddressLabel(displayName) || cleanAddressLabel(locality) || "Ubicación";
 
             results.push({
               id: `gc-${result.place_id}`,
-                text: cleanDisplayName,
+              text: cleanDisplayName,
               place_name: locality
-                  ? `${cleanDisplayName}, ${locality}`
-                  : cleanDisplayName,
+                ? `${cleanDisplayName}, ${locality}`
+                : cleanDisplayName,
               center: [
                 result.geometry.location.lng,
                 result.geometry.location.lat,
@@ -423,7 +423,7 @@ app.post("/users", upload.fields([
       year,
       capacidad,
     } = req.body;
-    
+
     const isUpdate = !!id; // Si viene id, es una actualización
     console.log(isUpdate ? "Intento de actualización:" : "Intento de registro:", { id, email, name, role });
 
@@ -451,7 +451,7 @@ app.post("/users", upload.fields([
         return res.status(409).json({ error: "email_exists" });
       }
     }
-    
+
     // convertir archivos a base64
     const files = (req as any).files as { [key: string]: Express.Multer.File[] } | undefined;
     const docCedulaVerdeFrontB64 = files?.docCedulaVerdeFront?.[0]?.buffer?.toString('base64');
@@ -461,9 +461,9 @@ app.post("/users", upload.fields([
     const docCedulaFrontB64 = files?.docCedulaFront?.[0]?.buffer?.toString('base64');
     const docCedulaBackB64 = files?.docCedulaBack?.[0]?.buffer?.toString('base64');
     const docJudicialCertB64 = files?.docJudicialCert?.[0]?.buffer?.toString('base64');
-    
+
     let user: any;
-    
+
     if (isUpdate) {
       // ACTUALIZACIÓN de usuario existente
       const updateData: any = {
@@ -476,7 +476,7 @@ app.post("/users", upload.fields([
         documentStatus: docCedulaVerdeFrontB64 ? "PENDING" : undefined,
         rejectionReason: docCedulaVerdeFrontB64 ? null : undefined, // limpiar razón si se re-suben documentos
       };
-      
+
       // Solo actualizar documentos si se subieron nuevos
       if (docCedulaVerdeFrontB64) updateData.docCedulaVerdeFront = docCedulaVerdeFrontB64;
       if (docCedulaVerdeBackB64) updateData.docCedulaVerdeBack = docCedulaVerdeBackB64;
@@ -485,18 +485,18 @@ app.post("/users", upload.fields([
       if (docCedulaFrontB64) updateData.docCedulaFront = docCedulaFrontB64;
       if (docCedulaBackB64) updateData.docCedulaBack = docCedulaBackB64;
       if (docJudicialCertB64) updateData.docJudicialCert = docJudicialCertB64;
-      
+
       user = await prisma.user.update({
         where: { id },
         data: updateData,
       });
-      
+
       // Actualizar vehículo si existe
       if (placa || marca || modelo) {
         const existingVehicle = await prisma.vehicle.findFirst({
           where: { driverId: id },
         });
-        
+
         if (existingVehicle) {
           await prisma.vehicle.update({
             where: { id: existingVehicle.id },
@@ -525,7 +525,7 @@ app.post("/users", upload.fields([
           });
         }
       }
-      
+
       console.log("Usuario actualizado exitosamente:", {
         id: user.id,
         email: user.email,
@@ -534,7 +534,7 @@ app.post("/users", upload.fields([
     } else {
       // CREACIÓN de usuario nuevo
       const hashed = bcrypt.hashSync(String(password), 10);
-      
+
       const createData: any = {
         name,
         email,
@@ -706,7 +706,7 @@ app.post("/auth/admin/create", authMiddleware, async (req, res) => {
     if (!email || !password) {
       return res.status(400).json({ error: "missing email/password" });
     }
-    
+
     // Verify requester is admin
     const requesterId = (req.user as any)?.id;
     const requester = await prisma.user.findUnique({ where: { id: requesterId } });
@@ -732,7 +732,7 @@ app.post("/auth/admin/create", authMiddleware, async (req, res) => {
     });
 
     console.log("Admin creado exitosamente:", { id: admin.id, email: admin.email });
-    
+
     const { password: _pw, ...safe } = admin as any;
     res.json({ success: true, user: safe });
   } catch (err) {
@@ -773,7 +773,7 @@ app.post("/users/:id/approve", authMiddleware, adminOnly, async (req, res) => {
       where: { id },
       data: { approved: true, documentStatus: "APPROVED" },
     });
-    
+
     // create notification
     try {
       await (prisma as any).notification.create({
@@ -787,7 +787,7 @@ app.post("/users/:id/approve", authMiddleware, adminOnly, async (req, res) => {
     } catch (notifErr) {
       console.error("notification create error", notifErr);
     }
-    
+
     res.json({ success: true, user });
   } catch (err) {
     console.error("approve error", err);
@@ -799,17 +799,17 @@ app.post("/users/:id/approve", authMiddleware, adminOnly, async (req, res) => {
 app.post("/users/:id/reject-documents", authMiddleware, adminOnly, async (req, res) => {
   const { id } = req.params;
   const { reason } = req.body;
-  
+
   if (!reason) {
     return res.status(400).json({ error: "rejection reason required" });
   }
-  
+
   try {
     const user = await (prisma.user as any).update({
       where: { id },
       data: { documentStatus: "REJECTED", rejectionReason: reason },
     });
-    
+
     // create notification
     try {
       await (prisma as any).notification.create({
@@ -823,7 +823,7 @@ app.post("/users/:id/reject-documents", authMiddleware, adminOnly, async (req, r
     } catch (notifErr) {
       console.error("notification create error", notifErr);
     }
-    
+
     res.json({ success: true, user });
   } catch (err) {
     console.error("reject documents error", err);
@@ -835,26 +835,26 @@ app.post("/users/:id/reject-documents", authMiddleware, adminOnly, async (req, r
 app.put("/users/:id", authMiddleware, async (req, res) => {
   const { id } = req.params;
   const userId = (req.user as any)?.id;
-  
+
   // Only allow user to update their own profile or admin updating anyone
   if (userId !== id && (req.user as any)?.role !== "ADMIN") {
     return res.status(403).json({ error: "forbidden" });
   }
-  
+
   try {
     const { name, phone, licenseType, licenseNumber } = req.body;
     const updateData: any = {};
-    
+
     if (name) updateData.name = name;
     if (phone) updateData.phone = phone;
     if (licenseType) updateData.licenseType = licenseType;
     if (licenseNumber) updateData.licenseNumber = licenseNumber;
-    
+
     const user = await (prisma.user as any).update({
       where: { id },
       data: updateData,
     });
-    
+
     const { password: _pw, ...safe } = user;
     res.json(safe);
   } catch (err) {
@@ -867,19 +867,19 @@ app.put("/users/:id", authMiddleware, async (req, res) => {
 app.get("/users/:id/documents", authMiddleware, async (req, res) => {
   const { id } = req.params as any;
   const userId = (req.user as any)?.id;
-  
+
   // Only allow user to view their own docs or admin viewing anyone
   if (userId !== id && (req.user as any)?.role !== "ADMIN") {
     return res.status(403).json({ error: "forbidden" });
   }
-  
+
   try {
     const user = await prisma.user.findUnique({
       where: { id },
     }) as any;
-    
+
     if (!user) return res.status(404).json({ error: "not_found" });
-    
+
     res.json(user);
   } catch (err) {
     console.error("get documents error", err);
@@ -890,13 +890,13 @@ app.get("/users/:id/documents", authMiddleware, async (req, res) => {
 // get user notifications
 app.get("/notifications", authMiddleware, async (req, res) => {
   const userId = (req.user as any)?.id;
-  
+
   try {
     const notifications = await (prisma as any).notification.findMany({
       where: { userId },
       orderBy: { createdAt: "desc" },
     });
-    
+
     res.json(notifications);
   } catch (err) {
     console.error("get notifications error", err);
@@ -908,21 +908,21 @@ app.get("/notifications", authMiddleware, async (req, res) => {
 app.post("/notifications/:id/read", authMiddleware, async (req, res) => {
   const { id } = req.params;
   const userId = (req.user as any)?.id;
-  
+
   try {
     const notification = await (prisma as any).notification.findUnique({
       where: { id },
     });
-    
+
     if (!notification || notification.userId !== userId) {
       return res.status(403).json({ error: "forbidden" });
     }
-    
+
     const updated = await (prisma as any).notification.update({
       where: { id },
       data: { read: true },
     });
-    
+
     res.json(updated);
   } catch (err) {
     console.error("mark notification read error", err);
@@ -934,7 +934,7 @@ app.post("/notifications/:id/read", authMiddleware, async (req, res) => {
 app.get("/me/rides", authMiddleware, async (req, res) => {
   const userId = (req.user as any)?.id;
   const userRole = (req.user as any)?.role;
-  
+
   try {
     const rides = await (prisma as any).ride.findMany({
       where:
@@ -948,7 +948,7 @@ app.get("/me/rides", authMiddleware, async (req, res) => {
       },
       orderBy: { createdAt: "desc" },
     });
-    
+
     res.json(rides);
   } catch (err) {
     console.error("get rides error", err);
@@ -1026,14 +1026,34 @@ async function canUserAccessRide(
 drivers.on("connection", (socket) => {
   console.log("Driver connected:", socket.id);
 
+  // Obtener el userId del token JWT validado en socketAuth()
+  const driverId = (socket.data as any)?.userId;
+
+  // Crear un room privado para este driver
+  // Esto permite enviar eventos SOLO a este conductor
+  if (driverId) {
+    socket.join(`driver:${driverId}`);
+  }
+
   socket.on("ride:join", async (data: { rideId: string; userId: string }) => {
     if (!data?.rideId || !data?.userId) return;
-    const ok = await canUserAccessRide(data.rideId, data.userId, "DRIVER");
+
+    const ok = await canUserAccessRide(
+      data.rideId,
+      data.userId,
+      "DRIVER",
+    );
+
     if (!ok) return;
+
     socket.join(`ride:${data.rideId}`);
-    socket.emit("ride:join_ok", { rideId: data.rideId });
+
+    socket.emit("ride:join_ok", {
+      rideId: data.rideId,
+    });
   });
 
+  
   socket.on(
     "ride:chat_message",
     async (msg: {
@@ -1294,17 +1314,84 @@ passengers.on("connection", (socket) => {
     socket.emit("ride:created", ride);
   });
 
-  socket.on("passenger:cancel_ride", async (cancelPayload: string | { rideId: string; reason?: string }) => {
-    const rideId = typeof cancelPayload === "string" ? cancelPayload : cancelPayload?.rideId;
-    const reason = typeof cancelPayload === "string" ? undefined : cancelPayload?.reason;
-    if (!rideId) return;
-    console.log("passenger:cancel_ride:", { rideId, reason });
-    const updated = await updateRideState(rideId, RideState.CANCELADO);
-    console.log("ride cancelled:", updated.id, updated.state);
-    const statusPayload = { rideId, newState: updated.state };
-    passengers.emit("ride:status_changed", statusPayload);
-    drivers.emit("ride:status_changed", statusPayload);
-  });
+  // socket.on("passenger:cancel_ride", async (cancelPayload: string | { rideId: string; reason?: string }) => {
+  //   const rideId = typeof cancelPayload === "string" ? cancelPayload : cancelPayload?.rideId;
+  //   const reason = typeof cancelPayload === "string" ? undefined : cancelPayload?.reason;
+  //   if (!rideId) return;
+  //   console.log("passenger:cancel_ride:", { rideId, reason });
+  //   const updated = await updateRideState(rideId, RideState.CANCELADO);
+  //   console.log("ride cancelled:", updated.id, updated.state);
+  //   const statusPayload = { rideId, newState: updated.state };
+  //   passengers.emit("ride:status_changed", statusPayload);
+  //   drivers.emit("ride:status_changed", statusPayload);
+  // });
+
+  socket.on(
+    "passenger:cancel_ride",
+    async (
+      cancelPayload: string | { rideId: string; reason?: string },
+    ) => {
+      const rideId =
+        typeof cancelPayload === "string"
+          ? cancelPayload
+          : cancelPayload?.rideId;
+
+      const reason =
+        typeof cancelPayload === "string"
+          ? undefined
+          : cancelPayload?.reason;
+
+      if (!rideId) return;
+
+      console.log("passenger:cancel_ride:", {
+        rideId,
+        reason,
+      });
+
+      const updated = await updateRideState(
+        rideId,
+        RideState.CANCELADO,
+      );
+
+      console.log(
+        "ride cancelled:",
+        updated.id,
+        updated.state,
+      );
+
+      const payload = {
+        rideId,
+        newState: updated.state,
+      };
+
+      // SOLO notificar a sockets relacionados con este ride
+      passengers.to(`ride:${rideId}`).emit(
+        "ride:status_changed",
+        payload,
+      );
+
+      drivers.to(`ride:${rideId}`).emit(
+        "ride:status_changed",
+        payload,
+      );
+
+      // También al room privado del pasajero
+      passengers.to(`passenger:${updated.passengerId}`).emit(
+        "ride:status_changed",
+        payload,
+      );
+
+      // Y al driver asignado si existe
+      if (updated.driverId) {
+        drivers.to(`driver:${updated.driverId}`).emit(
+          "ride:status_changed",
+          payload,
+        );
+      }
+    },
+  );
+
+
 });
 
 // ---------------------
