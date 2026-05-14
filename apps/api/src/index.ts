@@ -449,14 +449,20 @@ app.get("/rides", authMiddleware, async (req, res) => {
   try {
     const states = req.query.state;
 
+    let where: any = {};
+
+    if (states) {
+      if (Array.isArray(states)) {
+        where.state = {
+          in: states,
+        };
+      } else {
+        where.state = states;
+      }
+    }
+
     const rides = await prisma.ride.findMany({
-      where: states
-        ? {
-            state: Array.isArray(states)
-              ? { in: states as any }
-              : (states as any),
-          }
-        : undefined,
+      where,
       include: {
         passenger: true,
         driver: true,
@@ -469,10 +475,14 @@ app.get("/rides", authMiddleware, async (req, res) => {
 
     return res.json(rides);
   } catch (err) {
-    console.error(err);
-    return res.status(500).json({ error: "failed_get_rides" });
+    console.error("GET RIDES ERROR:", err);
+
+    return res.status(500).json({
+      error: "failed_get_rides",
+    });
   }
 });
+
 
 // =====================
 // APPROVE DRIVER
