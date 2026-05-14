@@ -31,7 +31,7 @@ export default function RegisterPage() {
       // Verificar si hubo error en el registro
       if (!res.ok || u.error) {
         console.error("Error en registro:", u);
-        if (u.error === "email_exists") {
+        if (u.error === "el email ya está registrado use un email diferente") {
           alert("Este email ya está registrado. ¿Quieres iniciar sesión?");
           router.push("/login");
           return;
