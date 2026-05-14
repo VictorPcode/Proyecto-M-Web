@@ -365,6 +365,43 @@ app.get("/users", authMiddleware, async (req, res) => {
     }
 });
 // =====================
+// GET RIDES
+// =====================
+app.get("/rides", authMiddleware, async (req, res) => {
+    try {
+        const states = req.query.state;
+        let where = {};
+        if (states) {
+            if (Array.isArray(states)) {
+                where.state = {
+                    in: states,
+                };
+            }
+            else {
+                where.state = states;
+            }
+        }
+        const rides = await prisma_1.default.ride.findMany({
+            where,
+            include: {
+                passenger: true,
+                driver: true,
+                vehicle: true,
+            },
+            orderBy: {
+                createdAt: "desc",
+            },
+        });
+        return res.json(rides);
+    }
+    catch (err) {
+        console.error("GET RIDES ERROR:", err);
+        return res.status(500).json({
+            error: "failed_get_rides",
+        });
+    }
+});
+// =====================
 // APPROVE DRIVER
 // =====================
 app.post("/users/:id/approve", authMiddleware, async (req, res) => {
@@ -431,8 +468,62 @@ app.post("/users/:id/reject-documents", authMiddleware, async (req, res) => {
         });
     }
 });
+// =====================
+// GEOCODE
+// =====================
+app.get("/geocode", async (req, res) => {
+    try {
+        const query = String(req.query.query || "").trim();
+        const limit = Number(req.query.limit || 5);
+        if (!query) {
+            return res.json([]); // mejor que error
+        }
+        const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=${limit}`;
+        const response = await fetch(url, {
+            headers: {
+                "User-Agent": "movi-app",
+            },
+        });
+        const data = await response.json();
+        return res.json(data || []);
+    }
+    catch (err) {
+        console.error("GEOCODE ERROR:", err);
+        return res.json([]); // importante para UX
+    }
+});
+// =====================
+// REVERSE GEOCODE
+// =====================
+app.get("/reverse-geocode", async (req, res) => {
+    try {
+        const lat = Number(req.query.lat);
+        const lng = Number(req.query.lng);
+        if (!lat || !lng) {
+            return res.status(400).json({ error: "missing_coordinates" });
+        }
+        const url = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`;
+        const response = await fetch(url, {
+            headers: {
+                "User-Agent": "movi-app",
+            },
+        });
+        const data = await response.json();
+        return res.json(data);
+    }
+    catch (err) {
+        console.error("REVERSE GEOCODE ERROR:", err);
+        return res.status(500).json({ error: "reverse_geocode_failed" });
+    }
+});
 const httpServer = (0, http_1.createServer)(app);
-const io = new socket_io_1.Server(httpServer, { cors: { origin: "*" } });
+const io = new socket_io_1.Server(httpServer, {
+    cors: {
+        origin: "*",
+        methods: ["GET", "POST"],
+    },
+    transports: ["websocket", "polling"],
+});
 const PORT = Number(process.env.PORT) || 8080;
 httpServer.listen(PORT, "0.0.0.0", () => {
     console.log("Server running on", PORT);

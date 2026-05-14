@@ -316,7 +316,7 @@ export default function RiderPage() {
               setRequests((prev) =>
                 prev.map((r2) =>
                   r2.id === req.id
-                    ? { ...r2, originName: oData.place_name || oData.text, destName: dData.place_name || dData.text }
+                    ? { ...r2, originName: oData.display_name || oData.text, destName: dData.display_name || dData.text }
                     : r2,
                 ),
               );
@@ -353,7 +353,7 @@ export default function RiderPage() {
                   ]);
                   const [oData, dData] = await Promise.all([oRes.json(), dRes.json()]);
                   setActiveRide((prev) => prev && prev.id === ride.id
-                    ? { ...prev, originName: oData.place_name || oData.text, destName: dData.place_name || dData.text }
+                    ? { ...prev, originName: oData.display_name || oData.text, destName: dData.display_name || dData.text }
                     : prev
                   );
                 } catch {}

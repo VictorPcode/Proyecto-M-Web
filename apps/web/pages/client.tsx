@@ -634,11 +634,12 @@ export default function ClientPage() {
         ]);
         if (oRes && oRes.ok) {
           const data = await oRes.json();
-          setOriginQuery(data.place_name || data.text || "Origen");
+          setOriginQuery(data.display_name
+             || data.text || "Origen");
         }
         if (dRes && dRes.ok) {
           const data = await dRes.json();
-          setDestQuery(data.place_name || data.text || "Destino");
+          setDestQuery(data.display_name || data.text || "Destino");
         }
       } catch (err) {
         console.warn("Error restoring route names:", err);
