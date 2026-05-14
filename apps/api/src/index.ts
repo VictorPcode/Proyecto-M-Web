@@ -139,15 +139,16 @@ app.post(
 
       const files = (req as any).files as any;
 
-      const docCedulaVerdeFrontB64 = files?.docCedulaVerdeFront?.[0]?.buffer?.toString("base64");
-      const docCedulaVerdeBackB64 = files?.docCedulaVerdeBack?.[0]?.buffer?.toString("base64");
-      const docLicenseFrontB64 = files?.docLicenseFront?.[0]?.buffer?.toString("base64");
-      const docLicenseBackB64 = files?.docLicenseBack?.[0]?.buffer?.toString("base64");
-      const docCedulaFrontB64 = files?.docCedulaFront?.[0]?.buffer?.toString("base64");
-      const docCedulaBackB64 = files?.docCedulaBack?.[0]?.buffer?.toString("base64");
-      const docJudicialCertB64 = files?.docJudicialCert?.[0]?.buffer?.toString("base64");
+      const toB64 = (f: any) => f?.[0]?.buffer?.toString("base64") ?? null;
 
-      // FIX: sanitizar números
+      const docCedulaVerdeFrontB64 = toB64(files?.docCedulaVerdeFront);
+      const docCedulaVerdeBackB64 = toB64(files?.docCedulaVerdeBack);
+      const docLicenseFrontB64 = toB64(files?.docLicenseFront);
+      const docLicenseBackB64 = toB64(files?.docLicenseBack);
+      const docCedulaFrontB64 = toB64(files?.docCedulaFront);
+      const docCedulaBackB64 = toB64(files?.docCedulaBack);
+      const docJudicialCertB64 = toB64(files?.docJudicialCert);
+
       const safeYear = year ? Number(year) : undefined;
       const safeCapacidad = capacidad ? Number(capacidad) : 4;
 
@@ -165,7 +166,6 @@ app.post(
           },
         });
 
-        // FIX: vehicle update seguro
         if (placa || marca || modelo) {
           const existingVehicle = await prisma.vehicle.findFirst({
             where: { driverId: id },
@@ -200,39 +200,36 @@ app.post(
         }
       } else {
         const hashed = bcrypt.hashSync(String(password), 10);
-        // FIX: evitar duplicados (ESTO TE FALTABA)
-        const existing = await prisma.user.findUnique({
-          where: { email },
-        });
 
-        if (existing) {
-          return res.status(409).json({
-            error: "email_exists",
+        try {
+          user = await prisma.user.create({
+            data: {
+              name,
+              email,
+              password: hashed,
+              role: role ?? "PASSENGER",
+              phone,
+              licenseType,
+              licenseNumber,
+              approved: role === "ADMIN",
+              documentStatus: role === "ADMIN" ? "APPROVED" : "PENDING",
+
+              docCedulaVerdeFront: docCedulaVerdeFrontB64,
+              docCedulaVerdeBack: docCedulaVerdeBackB64,
+              docLicenseFront: docLicenseFrontB64,
+              docLicenseBack: docLicenseBackB64,
+              docCedulaFront: docCedulaFrontB64,
+              docCedulaBack: docCedulaBackB64,
+              docJudicialCert: docJudicialCertB64,
+            },
           });
+        } catch (err: any) {
+          if (err.code === "P2002") {
+            return res.status(409).json({ error: "email_exists" });
+          }
+          throw err;
         }
-        user = await prisma.user.create({
-          data: {
-            name,
-            email,
-            password: hashed,
-            role: role ?? "PASSENGER",
-            phone,
-            licenseType,
-            licenseNumber,
-            approved: role === "ADMIN",
-            documentStatus: role === "ADMIN" ? "APPROVED" : "PENDING",
 
-            docCedulaVerdeFront: docCedulaVerdeFrontB64,
-            docCedulaVerdeBack: docCedulaVerdeBackB64,
-            docLicenseFront: docLicenseFrontB64,
-            docLicenseBack: docLicenseBackB64,
-            docCedulaFront: docCedulaFrontB64,
-            docCedulaBack: docCedulaBackB64,
-            docJudicialCert: docJudicialCertB64,
-          },
-        });
-
-        // FIX CRÍTICO: solo crear vehículo si placa existe
         if (user.role === "DRIVER" && placa) {
           await prisma.vehicle.create({
             data: {
@@ -250,10 +247,10 @@ app.post(
       }
 
       const { password: _, ...safe } = user;
-      res.json(safe);
+      return res.json(safe);
     } catch (err) {
       console.error("USER CREATE/UPDATE ERROR:", err);
-      res.status(500).json({ error: "failed" });
+      return res.status(500).json({ error: "failed" });
     }
   }
 );
