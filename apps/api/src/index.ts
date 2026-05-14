@@ -99,7 +99,6 @@ function authMiddleware(req: express.Request, res: express.Response, next: expre
 }
 
 // AUTH LOGIN =======================
-
 app.post("/auth/login", async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -131,12 +130,22 @@ app.post("/auth/login", async (req, res) => {
     res.status(500).json({ error: "login_failed" });
   }
 });
+// =======================
 
 
 // =======================
 
+app.get("/auth/admin/setup", async (req, res) => {
+  const admin = await prisma.user.findFirst({
+    where: { role: "ADMIN" },
+  });
 
+  if (admin) return res.status(409).json({ exists: true });
 
+  return res.json({ exists: false });
+});
+
+//
 
 
 // =====================
