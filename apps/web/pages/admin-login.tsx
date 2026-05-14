@@ -20,7 +20,7 @@ export default function AdminLoginPage() {
   const checkAdminExists = async () => {
     try {
       const res = await fetch(`${API_URL}/auth/admin/setup`, {
-        method: "GET",
+        method: "POST",
         headers: { "Content-Type": "application/json" },
       });
       // Si devuelve 409, admin existe
