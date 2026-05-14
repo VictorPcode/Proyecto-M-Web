@@ -323,6 +323,69 @@ app.post("/users", upload.fields([
     }
 });
 // =====================
+// ME
+// =====================
+app.get("/me", authMiddleware, async (req, res) => {
+    try {
+        const userId = req.user?.id;
+        if (!userId)
+            return res.status(401).json({ error: "missing_user" });
+        const user = await prisma_1.default.user.findUnique({
+            where: { id: userId },
+            include: { vehicles: true },
+        });
+        if (!user)
+            return res.status(404).json({ error: "not_found" });
+        const { password, vehicles, ...safe } = user;
+        return res.json({
+            ...safe,
+            vehicle: vehicles?.[0] || null,
+        });
+    }
+    catch (err) {
+        console.error("GET ME ERROR:", err);
+        return res.status(500).json({ error: "failed_get_me" });
+    }
+});
+app.get("/me/rides", authMiddleware, async (req, res) => {
+    try {
+        const userId = req.user?.id;
+        const role = req.user?.role;
+        if (!userId || !role)
+            return res.status(401).json({ error: "missing_user" });
+        const rides = await prisma_1.default.ride.findMany({
+            where: role === "DRIVER"
+                ? { driverId: userId }
+                : role === "PASSENGER"
+                    ? { passengerId: userId }
+                    : {},
+            include: {
+                passenger: true,
+                driver: true,
+                vehicle: true,
+            },
+            orderBy: {
+                createdAt: "desc",
+            },
+        });
+        const result = rides.map((ride) => {
+            const paidFare = ride.finalFare ?? ride.estimatedFare ?? 0;
+            const adminFee = Math.round(paidFare * 0.05);
+            const driverEarnings = Math.max(paidFare - adminFee, 0);
+            return {
+                ...ride,
+                adminFee,
+                driverEarnings,
+            };
+        });
+        return res.json(result);
+    }
+    catch (err) {
+        console.error("GET ME RIDES ERROR:", err);
+        return res.status(500).json({ error: "failed_get_me_rides" });
+    }
+});
+// =====================
 // GET USERS
 // =====================
 app.get("/users", authMiddleware, async (req, res) => {
@@ -848,7 +911,7 @@ passengers.on("connection", (socket) => {
                 newState: updated.state,
             };
             passengers.to(`ride:${rideId}`).emit("ride:status_changed", payload);
-            drivers.to(`ride:${rideId}`).emit("ride:status_changed", payload);
+            drivers.emit("ride:status_changed", payload);
             passengers
                 .to(`passenger:${updated.passengerId}`)
                 .emit("ride:status_changed", payload);

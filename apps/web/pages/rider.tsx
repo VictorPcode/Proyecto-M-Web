@@ -4,6 +4,8 @@ import LeafletMap from "../../../packages/ui/LeafletMap";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
 const RIDER_RIDE_SNAPSHOT_KEY = "movi:rider:rideSnapshot";
+const PASSED_RIDES_KEY = "movi:rider:passedRides";
+const PASSED_RIDE_TTL_MS = 10 * 60 * 1000;
 
 const formatGuarani = (value: number) =>
   new Intl.NumberFormat("es-PY", {
@@ -61,6 +63,42 @@ type VehicleInfo = {
   marca?: string;
   modelo?: string;
   color?: string;
+};
+
+const getPassedRideIds = () => {
+  if (typeof window === "undefined") return new Set<string>();
+
+  try {
+    const raw = localStorage.getItem(PASSED_RIDES_KEY);
+    const parsed = raw ? JSON.parse(raw) : {};
+    const now = Date.now();
+    const activeEntries = Object.entries(parsed).filter(
+      ([, ts]) => typeof ts === "number" && now - ts < PASSED_RIDE_TTL_MS,
+    );
+
+    if (activeEntries.length !== Object.entries(parsed).length) {
+      localStorage.setItem(
+        PASSED_RIDES_KEY,
+        JSON.stringify(Object.fromEntries(activeEntries)),
+      );
+    }
+
+    return new Set(activeEntries.map(([rideId]) => rideId));
+  } catch {
+    localStorage.removeItem(PASSED_RIDES_KEY);
+    return new Set<string>();
+  }
+};
+
+const rememberPassedRide = (rideId: string) => {
+  if (typeof window === "undefined") return;
+
+  try {
+    const raw = localStorage.getItem(PASSED_RIDES_KEY);
+    const parsed = raw ? JSON.parse(raw) : {};
+    parsed[rideId] = Date.now();
+    localStorage.setItem(PASSED_RIDES_KEY, JSON.stringify(parsed));
+  } catch {}
 };
 
 export default function RiderPage() {
@@ -178,6 +216,8 @@ export default function RiderPage() {
         }) => {
           console.log("Nueva solicitud recibida:", r);
           setRequests((prev: RideRequest[]) => {
+            if (getPassedRideIds().has(r.rideId)) return prev;
+
             if (
               !r.origin ||
               typeof r.origin.lat !== "number" ||
@@ -220,13 +260,22 @@ export default function RiderPage() {
       socket.on(
         "ride:status_changed",
         (s: { rideId: string; newState: RideState }) => {
-          if (s.newState === "CANCELADO") {
-            // Remove cancelled ride from pending list
+          if (s.newState === "CANCELADO" || s.newState === "FINALIZADO") {
             setRequests((prev) => prev.filter((x) => x.id !== s.rideId));
-            // Clear active ride if it was this one
-            setActiveRide((prev) =>
-              prev && prev.id === s.rideId ? null : prev,
-            );
+            setActiveRide((prev) => {
+              if (!prev || prev.id !== s.rideId) return prev;
+              activeRideIdRef.current = null;
+              setRouteGeometry(null);
+              setChatMessages([]);
+              setChatOpen(false);
+              setShowPaymentModal(false);
+              setShowManualInputModal(false);
+              setPendingFare(0);
+              localStorage.removeItem(RIDER_RIDE_SNAPSHOT_KEY);
+              return null;
+            });
+          } else if (s.newState === "ASIGNADO") {
+            setRequests((prev) => prev.filter((x) => x.id !== s.rideId));
           } else {
             setRequests((prev) =>
               prev.map((x) =>
@@ -282,6 +331,7 @@ export default function RiderPage() {
 
         if (ridesRes.ok) {
           const rides = await ridesRes.json();
+          const passedRideIds = getPassedRideIds();
           // Reemplazar completamente en lugar de agregar para evitar duplicados
           const mapped: RideRequest[] = rides.map(
             (r: {
@@ -303,7 +353,7 @@ export default function RiderPage() {
               passengerId: r.passengerId,
               passengerName: r.passenger?.name || "Pasajero",
             }),
-          );
+          ).filter((ride: RideRequest) => !passedRideIds.has(ride.id));
           setRequests(filterRequestsByActiveRide(mapped));
           // Reverse-geocode names for DB-loaded rides
           mapped.forEach(async (req) => {
@@ -665,7 +715,7 @@ export default function RiderPage() {
   };
 
   const pass = (ride: RideRequest) => {
-    // Simplemente remover de la lista (equivalente a "rechazar" pero con mejor UX)
+    rememberPassedRide(ride.id);
     setRequests((prev) => prev.filter((r) => r.id !== ride.id));
   };
 
