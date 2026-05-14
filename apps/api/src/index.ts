@@ -99,6 +99,8 @@ function authMiddleware(req: express.Request, res: express.Response, next: expre
 }
 
 // =======================
+// 
+// =======================
 
 app.get("/auth/admin/setup", async (req, res) => {
   const admin = await prisma.user.findFirst({
@@ -109,8 +111,6 @@ app.get("/auth/admin/setup", async (req, res) => {
 
   return res.json({ exists: false });
 });
-
-// =======================
 
 
 // =====================
@@ -388,7 +388,139 @@ app.post(
   }
 );
 
-// resto de tu código SIN CAMBIOS...
+// =====================
+// GET USERS
+// =====================
+
+app.get("/users", authMiddleware, async (req, res) => {
+  try {
+    if (req.user?.role !== "ADMIN") {
+      return res.status(403).json({
+        error: "forbidden",
+      });
+    }
+
+    const role = req.query.role as string | undefined;
+    const documentStatus = req.query.documentStatus as string | undefined;
+
+    const users = await prisma.user.findMany({
+      where: {
+        ...(role ? { role: role as any } : {}),
+        ...(documentStatus
+          ? { documentStatus: documentStatus as any }
+          : {}),
+      },
+
+      include: {
+        vehicles: true,
+      },
+
+      orderBy: {
+        createdAt: "desc",
+      },
+    });
+
+    const safeUsers = users.map((u) => {
+      const { password, vehicles, ...safe } = u;
+
+      return {
+        ...safe,
+
+        // mantener compatibilidad con frontend actual
+        vehicle: vehicles?.[0] || null,
+      };
+    });
+
+    return res.json(safeUsers);
+  } catch (err) {
+    console.error("GET USERS ERROR:", err);
+
+    return res.status(500).json({
+      error: "failed_get_users",
+    });
+  }
+});
+
+// =====================
+// APPROVE DRIVER
+// =====================
+
+app.post("/users/:id/approve", authMiddleware, async (req, res) => {
+  try {
+    if (req.user?.role !== "ADMIN") {
+      return res.status(403).json({
+        error: "forbidden",
+      });
+    }
+
+    const id = Array.isArray(req.params.id)
+      ? req.params.id[0]
+      : req.params.id;
+
+    const user = await prisma.user.update({
+      where: { id },
+      data: {
+        approved: true,
+        documentStatus: "APPROVED",
+      },
+    });
+
+    const { password, ...safe } = user;
+
+    return res.json(safe);
+  } catch (err) {
+    console.error("APPROVE DRIVER ERROR:", err);
+
+    return res.status(500).json({
+      error: "approve_failed",
+    });
+  }
+});
+
+// =====================
+// REJECT DRIVER DOCUMENTS
+// =====================
+
+app.post("/users/:id/reject-documents", authMiddleware, async (req, res) => {
+  try {
+    if (req.user?.role !== "ADMIN") {
+      return res.status(403).json({
+        error: "forbidden",
+      });
+    }
+
+    const id = Array.isArray(req.params.id)
+      ? req.params.id[0]
+      : req.params.id;
+
+    const { reason } = req.body;
+
+    if (!reason) {
+      return res.status(400).json({
+        error: "missing_reason",
+      });
+    }
+
+    const user = await prisma.user.update({
+      where: { id },
+      data: {
+        approved: false,
+        documentStatus: "REJECTED",
+        rejectionReason: reason,
+      },
+    });
+
+    const { password, ...safe } = user;
+
+    return res.json(safe);
+  } catch (err) {
+    console.error("REJECT DRIVER ERROR:", err);
+
+    return res.status(500).json({
+      error: "reject_failed",
+    });
+  }
+});
 
 const httpServer = createServer(app);
 const io = new Server(httpServer, { cors: { origin: "*" } });
