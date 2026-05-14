@@ -781,10 +781,13 @@ drivers.on("connection", (socket) => {
             passengers
                 .to(`passenger:${updated.passengerId}`)
                 .emit("ride:assigned", updated);
-            drivers.emit("ride:status_changed", {
+            const statusPayload = {
                 rideId: updated.id,
                 newState: updated.state,
-            });
+            };
+            drivers.emit("ride:status_changed", statusPayload);
+            passengers.emit("ride:status_changed", statusPayload);
+            io.emit("ride:status_changed", statusPayload);
         }
         catch (err) {
             console.error("driver:accept_ride error:", err);

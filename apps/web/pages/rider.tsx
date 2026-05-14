@@ -6,6 +6,8 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
 const RIDER_RIDE_SNAPSHOT_KEY = "movi:rider:rideSnapshot";
 const PASSED_RIDES_KEY = "movi:rider:passedRides";
 const PASSED_RIDE_TTL_MS = 10 * 60 * 1000;
+const NEARBY_REQUEST_RADIUS_KM = 4;
+const NEAR_DESTINATION_THRESHOLD_KM = 2;
 
 const formatGuarani = (value: number) =>
   new Intl.NumberFormat("es-PY", {
@@ -226,14 +228,46 @@ export default function RiderPage() {
               return prev;
             }
             const ride = activeRideRef.current;
+            if (ride?.state === "ASIGNADO") return prev;
+
+            if (ride?.state === "EN_CURSO" && ride.destination?.lat && ride.destination?.lng) {
+              const distanceToCurrentDestination = distanceKm(
+                driverLocation[1],
+                driverLocation[0],
+                ride.destination.lat,
+                ride.destination.lng,
+              );
+
+              if (
+                distanceToCurrentDestination === null ||
+                distanceToCurrentDestination > NEAR_DESTINATION_THRESHOLD_KM
+              ) {
+                return prev;
+              }
+            }
+
+            const distanceToNewOrigin = distanceKm(
+              driverLocation[1],
+              driverLocation[0],
+              r.origin.lat,
+              r.origin.lng,
+            );
+
+            if (
+              distanceToNewOrigin === null ||
+              distanceToNewOrigin > NEARBY_REQUEST_RADIUS_KM
+            ) {
+              return prev;
+            }
+
             if (ride?.destination?.lat && ride?.destination?.lng) {
-              const distance = distanceKm(
+              const distanceFromDestination = distanceKm(
                 ride.destination.lat,
                 ride.destination.lng,
                 r.origin?.lat,
                 r.origin?.lng,
               );
-              if (distance === null || distance > 1) return prev;
+              if (distanceFromDestination === null || distanceFromDestination > NEARBY_REQUEST_RADIUS_KM) return prev;
             }
             // Evitar duplicados
             if (prev.some((x) => x.id === r.rideId)) return prev;
