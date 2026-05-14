@@ -98,6 +98,47 @@ function authMiddleware(req: express.Request, res: express.Response, next: expre
   }
 }
 
+// AUTH LOGIN =======================
+
+app.post("/auth/login", async (req, res) => {
+  try {
+    const { email, password } = req.body;
+
+    const user = await prisma.user.findUnique({ where: { email } });
+
+    if (!user) return res.status(401).json({ error: "invalid_credentials" });
+
+    const ok = await bcrypt.compare(password, user.password);
+
+    if (!ok) return res.status(401).json({ error: "invalid_credentials" });
+
+    const token = jwt.sign(
+      { sub: user.id, role: user.role },
+      JWT_SECRET,
+      { expiresIn: "7d" }
+    );
+
+    return res.json({
+      token,
+      user: {
+        id: user.id,
+        email: user.email,
+        role: user.role,
+      },
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "login_failed" });
+  }
+});
+
+
+// =======================
+
+
+
+
+
 // =====================
 // USERS CREATE / UPDATE (FIX PRINCIPAL)
 // =====================
