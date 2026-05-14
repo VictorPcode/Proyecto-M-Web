@@ -452,12 +452,17 @@ app.get("/rides", authMiddleware, async (req, res) => {
     let where: any = {};
 
     if (states) {
-      if (Array.isArray(states)) {
+      const stateList = (Array.isArray(states) ? states : [states])
+        .flatMap((state) => String(state).split(","))
+        .map((state) => state.trim())
+        .filter(Boolean);
+
+      if (stateList.length === 1) {
+        where.state = stateList[0];
+      } else if (stateList.length > 1) {
         where.state = {
-          in: states,
+          in: stateList,
         };
-      } else {
-        where.state = states;
       }
     }
 
@@ -579,9 +584,31 @@ app.get("/geocode", async (req, res) => {
       return res.json([]); // mejor que error
     }
 
+    const normalizedQuery = (() => {
+      const lower = query
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "");
+
+      if (
+        lower.includes("una") &&
+        lower.includes("facultad") &&
+        lower.includes("ciencias") &&
+        lower.includes("quim")
+      ) {
+        return "Facultad de Ciencias Quimicas San Lorenzo Paraguay";
+      }
+
+      if (lower.includes("fcq")) {
+        return "FCQ San Lorenzo Paraguay";
+      }
+
+      return query;
+    })();
+
     const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(
-      query
-    )}&format=json&limit=${limit}`;
+      normalizedQuery
+    )}&format=json&limit=${limit}&countrycodes=py&accept-language=es&addressdetails=1`;
 
     const response = await fetch(url, {
       headers: {
@@ -636,6 +663,414 @@ const io = new Server(httpServer, {
     methods: ["GET", "POST"],
   },
   transports: ["websocket", "polling"],
+});
+
+const drivers = io.of("/drivers");
+const passengers = io.of("/passengers");
+
+function socketAuth(namespace: ReturnType<typeof io.of>) {
+  namespace.use((socket, next) => {
+    try {
+      const token =
+        (socket.handshake.auth as any)?.token ||
+        (socket.handshake.headers?.authorization as string | undefined)?.replace(
+          /^Bearer\s+/,
+          "",
+        );
+
+      if (!token) return next(new Error("missing_token"));
+
+      const payload = jwt.verify(token, JWT_SECRET) as any;
+      socket.data.userId = payload.sub;
+      socket.data.role = payload.role;
+      next();
+    } catch {
+      next(new Error("invalid_token"));
+    }
+  });
+}
+
+socketAuth(passengers);
+socketAuth(drivers);
+
+export async function createRide({
+  passengerId,
+  origin,
+  destination,
+  estimatedFare,
+}: {
+  passengerId: string;
+  origin: GeoLocation;
+  destination: GeoLocation;
+  estimatedFare: number;
+}) {
+  return prisma.ride.create({
+    data: {
+      passenger: {
+        connectOrCreate: {
+          where: { id: passengerId },
+          create: {
+            id: passengerId,
+            name: "Pasajero",
+            email: `${passengerId}@example.local`,
+            password: "",
+            role: "PASSENGER",
+          },
+        },
+      },
+      originLat: origin.lat,
+      originLng: origin.lng,
+      destLat: destination.lat,
+      destLng: destination.lng,
+      estimatedFare,
+      state: RideState.PENDIENTE,
+    },
+    include: { passenger: true },
+  });
+}
+
+async function updateRideState(rideId: string, newState: RideState) {
+  return prisma.ride.update({
+    where: { id: rideId },
+    data: { state: newState },
+    include: { passenger: true, driver: true, vehicle: true },
+  });
+}
+
+async function canUserAccessRide(
+  rideId: string,
+  userId: string,
+  role: "PASSENGER" | "DRIVER",
+) {
+  const ride = await prisma.ride.findUnique({
+    where: { id: rideId },
+    select: { id: true, state: true, passengerId: true, driverId: true },
+  });
+
+  if (!ride) return false;
+  if (ride.state === RideState.PENDIENTE || ride.state === RideState.CANCELADO) {
+    return false;
+  }
+  if (role === "PASSENGER" && ride.passengerId !== userId) return false;
+  if (role === "DRIVER" && ride.driverId !== userId) return false;
+
+  return true;
+}
+
+drivers.on("connection", (socket) => {
+  console.log("Driver connected:", socket.id);
+
+  const driverId = socket.data.userId;
+  if (driverId) {
+    socket.join(`driver:${driverId}`);
+  }
+
+  socket.on("ride:join", async (data: { rideId: string; userId: string }) => {
+    if (!data?.rideId || !data?.userId) return;
+
+    const ok = await canUserAccessRide(data.rideId, data.userId, "DRIVER");
+    if (!ok) return;
+
+    socket.join(`ride:${data.rideId}`);
+    socket.emit("ride:join_ok", { rideId: data.rideId });
+  });
+
+  socket.on(
+    "ride:chat_message",
+    async (msg: {
+      rideId: string;
+      userId: string;
+      text: string;
+      ts?: number;
+    }) => {
+      if (!msg?.rideId || !msg?.userId || !msg?.text) return;
+
+      const ok = await canUserAccessRide(msg.rideId, msg.userId, "DRIVER");
+      if (!ok) return;
+
+      const payload = {
+        rideId: msg.rideId,
+        userId: msg.userId,
+        role: "DRIVER",
+        text: msg.text,
+        ts: msg.ts ?? Date.now(),
+      };
+
+      passengers.to(`ride:${msg.rideId}`).emit("ride:chat_message", payload);
+      drivers.to(`ride:${msg.rideId}`).emit("ride:chat_message", payload);
+    },
+  );
+
+  (async () => {
+    try {
+      const pending = await prisma.ride.findMany({
+        where: { state: RideState.PENDIENTE },
+        include: { passenger: true },
+      });
+
+      pending.forEach((ride) => {
+        socket.emit("driver:nearby_request", {
+          rideId: ride.id,
+          passengerId: ride.passengerId,
+          passengerName: ride.passenger?.name || "Pasajero",
+          origin: { lat: ride.originLat, lng: ride.originLng },
+          destination: { lat: ride.destLat, lng: ride.destLng },
+          estimatedFare: ride.estimatedFare,
+        });
+      });
+    } catch (err) {
+      console.error("Error sending pending rides to driver:", err);
+    }
+  })();
+
+  socket.on("driver:location", (loc: GeoLocation) => {
+    io.emit("ride:tracking", loc);
+  });
+
+  socket.on(
+    "driver:accept_ride",
+    async (data: {
+      rideId: string;
+      driverId: string;
+      vehicleId?: string;
+      vehicle?: {
+        placa?: string;
+        marca?: string;
+        modelo?: string;
+        color?: string;
+      };
+    }) => {
+      try {
+        const ride = await prisma.ride.findUnique({
+          where: { id: data.rideId },
+        });
+        if (!ride || ride.state !== RideState.PENDIENTE) return;
+
+        if (data.vehicleId) {
+          await prisma.vehicle.upsert({
+            where: { id: data.vehicleId },
+            update: {
+              placa: data.vehicle?.placa ?? data.vehicleId,
+              marca: data.vehicle?.marca ?? undefined,
+              modelo: data.vehicle?.modelo ?? undefined,
+              color: data.vehicle?.color ?? undefined,
+              driverId: data.driverId ?? null,
+            },
+            create: {
+              id: data.vehicleId,
+              placa: data.vehicle?.placa ?? data.vehicleId,
+              marca: data.vehicle?.marca ?? undefined,
+              modelo: data.vehicle?.modelo ?? undefined,
+              color: data.vehicle?.color ?? undefined,
+              estado: "DISPONIBLE",
+              driverId: data.driverId ?? null,
+            },
+          });
+        }
+
+        const updated = await prisma.ride.update({
+          where: { id: data.rideId },
+          data: {
+            state: RideState.ASIGNADO,
+            driver: data.driverId
+              ? { connect: { id: data.driverId } }
+              : undefined,
+            vehicle: data.vehicleId
+              ? { connect: { id: data.vehicleId } }
+              : undefined,
+          },
+          include: {
+            passenger: true,
+            driver: true,
+            vehicle: true,
+          },
+        });
+
+        socket.join(`ride:${updated.id}`);
+
+        passengers
+          .to(`passenger:${updated.passengerId}`)
+          .emit("ride:assigned", updated);
+
+        drivers.emit("ride:status_changed", {
+          rideId: updated.id,
+          newState: updated.state,
+        });
+      } catch (err) {
+        console.error("driver:accept_ride error:", err);
+      }
+    },
+  );
+
+  socket.on("driver:start_ride", async (rideId: string) => {
+    try {
+      const updated = await updateRideState(rideId, RideState.EN_CURSO);
+      passengers.emit("ride:status_changed", {
+        rideId,
+        newState: updated.state,
+      });
+      drivers.emit("ride:status_changed", {
+        rideId,
+        newState: updated.state,
+      });
+    } catch (err) {
+      console.error("driver:start_ride error:", err);
+    }
+  });
+
+  socket.on(
+    "driver:end_ride",
+    async (
+      data: string | { rideId: string; finalFare?: number; state?: RideState },
+    ) => {
+      try {
+        const rideId = typeof data === "string" ? data : data.rideId;
+        const finalFare =
+          typeof data === "object" ? data.finalFare : undefined;
+        const isCancelled =
+          typeof data === "object" && data.state === RideState.CANCELADO;
+        const newState = isCancelled
+          ? RideState.CANCELADO
+          : RideState.FINALIZADO;
+
+        const updateData: any = { state: newState };
+        if (finalFare !== undefined && finalFare !== null) {
+          updateData.finalFare = finalFare;
+        }
+
+        const updated = await prisma.ride.update({
+          where: { id: rideId },
+          data: updateData,
+          include: { passenger: true, driver: true, vehicle: true },
+        });
+
+        const payload = {
+          rideId,
+          newState: updated.state,
+          finalFare: updated.finalFare,
+        };
+
+        passengers.emit("ride:status_changed", payload);
+        drivers.emit("ride:status_changed", payload);
+      } catch (err) {
+        console.error("driver:end_ride error:", err);
+      }
+    },
+  );
+
+  socket.on("driver:confirm_payment", async (data: { rideId: string }) => {
+    passengers.emit("ride:payment_confirmed", { rideId: data.rideId });
+    drivers.emit("ride:payment_confirmed", { rideId: data.rideId });
+  });
+});
+
+passengers.on("connection", (socket) => {
+  console.log("Passenger connected:", socket.id);
+
+  const passengerId = socket.data.userId;
+  if (passengerId) {
+    socket.join(`passenger:${passengerId}`);
+  }
+
+  socket.on("ride:join", async (data: { rideId: string; userId: string }) => {
+    if (!data?.rideId || !data?.userId) return;
+
+    const ok = await canUserAccessRide(data.rideId, data.userId, "PASSENGER");
+    if (!ok) return;
+
+    socket.join(`ride:${data.rideId}`);
+    socket.emit("ride:join_ok", { rideId: data.rideId });
+  });
+
+  socket.on(
+    "ride:chat_message",
+    async (msg: {
+      rideId: string;
+      userId: string;
+      text: string;
+      ts?: number;
+    }) => {
+      if (!msg?.rideId || !msg?.userId || !msg?.text) return;
+
+      const ok = await canUserAccessRide(msg.rideId, msg.userId, "PASSENGER");
+      if (!ok) return;
+
+      const payload = {
+        rideId: msg.rideId,
+        userId: msg.userId,
+        role: "PASSENGER",
+        text: msg.text,
+        ts: msg.ts ?? Date.now(),
+      };
+
+      passengers.to(`ride:${msg.rideId}`).emit("ride:chat_message", payload);
+      drivers.to(`ride:${msg.rideId}`).emit("ride:chat_message", payload);
+    },
+  );
+
+  socket.on("passenger:request_ride", async (data: any) => {
+    try {
+      console.log("passenger:request_ride received:", data);
+
+      const ride = await createRide({
+        passengerId: data.passengerId,
+        origin: data.origin,
+        destination: data.destination,
+        estimatedFare: data.estimatedFare ?? 0,
+      });
+
+      drivers.emit("driver:nearby_request", {
+        rideId: ride.id,
+        passengerId: ride.passengerId,
+        passengerName: ride.passenger?.name || "Pasajero",
+        origin: { lat: ride.originLat, lng: ride.originLng },
+        destination: { lat: ride.destLat, lng: ride.destLng },
+        originName: data.originName,
+        destName: data.destName,
+        estimatedFare: ride.estimatedFare,
+      });
+
+      socket.join(`passenger:${ride.passengerId}`);
+      socket.emit("ride:created", ride);
+    } catch (err) {
+      console.error("passenger:request_ride error:", err);
+      socket.emit("ride:create_failed", { error: "create_ride_failed" });
+    }
+  });
+
+  socket.on(
+    "passenger:cancel_ride",
+    async (cancelPayload: string | { rideId: string; reason?: string }) => {
+      try {
+        const rideId =
+          typeof cancelPayload === "string"
+            ? cancelPayload
+            : cancelPayload?.rideId;
+
+        if (!rideId) return;
+
+        const updated = await updateRideState(rideId, RideState.CANCELADO);
+        const payload = {
+          rideId,
+          newState: updated.state,
+        };
+
+        passengers.to(`ride:${rideId}`).emit("ride:status_changed", payload);
+        drivers.to(`ride:${rideId}`).emit("ride:status_changed", payload);
+        passengers
+          .to(`passenger:${updated.passengerId}`)
+          .emit("ride:status_changed", payload);
+
+        if (updated.driverId) {
+          drivers
+            .to(`driver:${updated.driverId}`)
+            .emit("ride:status_changed", payload);
+        }
+      } catch (err) {
+        console.error("passenger:cancel_ride error:", err);
+      }
+    },
+  );
 });
 
 const PORT = Number(process.env.PORT) || 8080;
