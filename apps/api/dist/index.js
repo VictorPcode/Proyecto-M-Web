@@ -41,7 +41,6 @@ var RideState;
     RideState["FINALIZADO"] = "FINALIZADO";
     RideState["CANCELADO"] = "CANCELADO";
 })(RideState || (exports.RideState = RideState = {}));
-prisma_1.default.$connect().catch(console.error);
 function isPlusCode(value) {
     if (!value)
         return false;
@@ -55,6 +54,55 @@ function cleanAddressLabel(value) {
     if (!first || isPlusCode(first) || /^\d{5,}$/.test(first))
         return "";
     return first;
+}
+async function ensureDatabaseCompatibility() {
+    await prisma_1.default.$executeRawUnsafe(`ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "photoUrl" TEXT`);
+    await prisma_1.default.$executeRawUnsafe(`ALTER TABLE "Ride" ADD COLUMN IF NOT EXISTS "adminFee" DOUBLE PRECISION`);
+    await prisma_1.default.$executeRawUnsafe(`ALTER TABLE "Ride" ADD COLUMN IF NOT EXISTS "driverEarnings" DOUBLE PRECISION`);
+    await prisma_1.default.$executeRawUnsafe(`ALTER TABLE "Ride" ADD COLUMN IF NOT EXISTS "acceptedAt" TIMESTAMP(3)`);
+    await prisma_1.default.$executeRawUnsafe(`ALTER TABLE "Ride" ADD COLUMN IF NOT EXISTS "startedAt" TIMESTAMP(3)`);
+    await prisma_1.default.$executeRawUnsafe(`ALTER TABLE "Ride" ADD COLUMN IF NOT EXISTS "completedAt" TIMESTAMP(3)`);
+    await prisma_1.default.$executeRawUnsafe(`ALTER TABLE "Ride" ADD COLUMN IF NOT EXISTS "cancelledAt" TIMESTAMP(3)`);
+    await prisma_1.default.$executeRawUnsafe(`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'DriverSessionStatus') THEN
+        CREATE TYPE "DriverSessionStatus" AS ENUM ('ACTIVE', 'COMPLETED', 'RESTING');
+      END IF;
+    END $$;
+  `);
+    await prisma_1.default.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS "DriverSession" (
+      "id" TEXT NOT NULL,
+      "driverId" TEXT NOT NULL,
+      "status" "DriverSessionStatus" NOT NULL DEFAULT 'ACTIVE',
+      "startedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "endedAt" TIMESTAMP(3),
+      "restUntil" TIMESTAMP(3),
+      "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "updatedAt" TIMESTAMP(3) NOT NULL,
+      CONSTRAINT "DriverSession_pkey" PRIMARY KEY ("id")
+    )
+  `);
+    await prisma_1.default.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "DriverSession_driverId_status_idx" ON "DriverSession"("driverId", "status")`);
+    await prisma_1.default.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "DriverSession_driverId_restUntil_idx" ON "DriverSession"("driverId", "restUntil")`);
+    await prisma_1.default.$executeRawUnsafe(`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conname = 'DriverSession_driverId_fkey'
+      ) THEN
+        ALTER TABLE "DriverSession"
+          ADD CONSTRAINT "DriverSession_driverId_fkey"
+          FOREIGN KEY ("driverId")
+          REFERENCES "User"("id")
+          ON DELETE CASCADE
+          ON UPDATE CASCADE;
+      END IF;
+    END $$;
+  `);
 }
 const app = (0, express_1.default)();
 app.use((0, cors_1.default)());
@@ -1086,6 +1134,17 @@ passengers.on("connection", (socket) => {
     });
 });
 const PORT = Number(process.env.PORT) || 8080;
-httpServer.listen(PORT, "0.0.0.0", () => {
-    console.log("Server running on", PORT);
-});
+async function startServer() {
+    try {
+        await prisma_1.default.$connect();
+        await ensureDatabaseCompatibility();
+        httpServer.listen(PORT, "0.0.0.0", () => {
+            console.log("Server running on", PORT);
+        });
+    }
+    catch (err) {
+        console.error("BOOT ERROR:", err);
+        process.exit(1);
+    }
+}
+void startServer();
