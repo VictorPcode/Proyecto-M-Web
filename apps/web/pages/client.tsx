@@ -1,5 +1,5 @@
 //client.tsx
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
 import { useRouter } from "next/router";
 import { Button, Header } from "@movi/ui";
 import LeafletMap from "../../../packages/ui/LeafletMap";
@@ -82,6 +82,33 @@ const formatGuarani = (value: number) =>
     maximumFractionDigits: 0,
   }).format(value);
 
+const readFileAsDataUrl = (file: File) =>
+  new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+
+const validateFacePhoto = async (file: File) => {
+  const FaceDetectorCtor = (window as any).FaceDetector;
+  if (!FaceDetectorCtor) {
+    throw new Error("face_detector_unavailable");
+  }
+
+  const bitmap = await createImageBitmap(file);
+  const detector = new FaceDetectorCtor({
+    fastMode: false,
+    maxDetectedFaces: 1,
+  });
+  const faces = await detector.detect(bitmap);
+  bitmap.close?.();
+
+  if (!Array.isArray(faces) || faces.length !== 1) {
+    throw new Error("invalid_face_count");
+  }
+};
+
 export default function ClientPage() {
   const [messages, setMessages] = useState<string[]>([]);
   const [currentRide, setCurrentRide] = useState<Ride | null>(null);
@@ -94,10 +121,12 @@ export default function ClientPage() {
 
   const [user, setUser] = useState<User | null>(null);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [profileName, setProfileName] = useState("");
   const [profilePhone, setProfilePhone] = useState("");
   const [profilePhotoUrl, setProfilePhotoUrl] = useState("");
+  const [photoError, setPhotoError] = useState("");
   const [savingProfile, setSavingProfile] = useState(false);
   const [registering, setRegistering] = useState(false);
   const [name, setName] = useState("");
@@ -971,8 +1000,6 @@ export default function ClientPage() {
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
-          name: profileName,
-          phone: profilePhone,
           photoUrl: profilePhotoUrl,
         }),
       });
@@ -988,6 +1015,27 @@ export default function ClientPage() {
       alert("No se pudo guardar el perfil.");
     } finally {
       setSavingProfile(false);
+    }
+  };
+
+  const handleProfilePhotoChange = async (
+    event: ChangeEvent<HTMLInputElement>,
+  ) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setPhotoError("");
+    try {
+      await validateFacePhoto(file);
+      const dataUrl = await readFileAsDataUrl(file);
+      setProfilePhotoUrl(dataUrl);
+    } catch (err) {
+      const message =
+        err instanceof Error && err.message === "face_detector_unavailable"
+          ? "Este navegador no permite validar rostro. Usa un navegador compatible para cargar foto tipo carnet."
+          : "La foto debe mostrar exactamente un rostro visible tipo carnet.";
+      setPhotoError(message);
+      event.target.value = "";
     }
   };
 
@@ -1062,8 +1110,9 @@ export default function ClientPage() {
             gap: 8,
           }}
         >
+          <div style={{ position: "relative" }}>
           <button
-            onClick={() => setProfileOpen(true)}
+            onClick={() => setMenuOpen((open) => !open)}
             style={{
               padding: "10px 14px",
               background: "white",
@@ -1076,24 +1125,15 @@ export default function ClientPage() {
               boxShadow: "0 2px 8px rgba(0, 0, 0, 0.1)",
             }}
           >
-            Perfil
+            Menu
           </button>
-          <button
-            onClick={() => setHistoryOpen(true)}
-            style={{
-              padding: "10px 14px",
-              background: "white",
-              color: "#1c1c1e",
-              border: "1px solid #e5e5ea",
-              borderRadius: "8px",
-              fontSize: 13,
-              fontWeight: 600,
-              cursor: "pointer",
-              boxShadow: "0 2px 8px rgba(0, 0, 0, 0.1)",
-            }}
-          >
-            Historial
-          </button>
+          {menuOpen && (
+            <div style={{ position: "absolute", top: 44, right: 0, minWidth: 160, background: "white", borderRadius: 10, boxShadow: "0 8px 24px rgba(0,0,0,0.18)", overflow: "hidden" }}>
+              <button onClick={() => { setProfileOpen(true); setMenuOpen(false); }} style={{ width: "100%", padding: "12px 14px", border: "none", background: "white", textAlign: "left", fontWeight: 600, cursor: "pointer" }}>Perfil</button>
+              <button onClick={() => { setHistoryOpen(true); setMenuOpen(false); }} style={{ width: "100%", padding: "12px 14px", border: "none", background: "white", textAlign: "left", fontWeight: 600, cursor: "pointer" }}>Historial</button>
+            </div>
+          )}
+          </div>
           <button
             onClick={handleLogout}
             style={{
@@ -1119,11 +1159,13 @@ export default function ClientPage() {
           <div style={{ width: "min(92vw, 420px)", background: "white", borderRadius: 18, padding: 22, boxShadow: "0 20px 50px rgba(0,0,0,0.25)" }}>
             <h2 style={{ margin: "0 0 16px", fontSize: 20 }}>Mi perfil</h2>
             <label style={{ display: "block", fontSize: 13, color: "#555", marginBottom: 6 }}>Nombre</label>
-            <input value={profileName} onChange={(e) => setProfileName(e.target.value)} style={{ width: "100%", padding: 12, border: "1px solid #ddd", borderRadius: 10, marginBottom: 12 }} />
+            <div style={{ padding: 12, background: "#f5f5f7", borderRadius: 10, marginBottom: 12 }}>{profileName || user?.name || "Sin nombre"}</div>
             <label style={{ display: "block", fontSize: 13, color: "#555", marginBottom: 6 }}>Telefono</label>
-            <input value={profilePhone} onChange={(e) => setProfilePhone(e.target.value)} style={{ width: "100%", padding: 12, border: "1px solid #ddd", borderRadius: 10, marginBottom: 12 }} />
-            <label style={{ display: "block", fontSize: 13, color: "#555", marginBottom: 6 }}>Foto URL</label>
-            <input value={profilePhotoUrl} onChange={(e) => setProfilePhotoUrl(e.target.value)} style={{ width: "100%", padding: 12, border: "1px solid #ddd", borderRadius: 10, marginBottom: 18 }} />
+            <div style={{ padding: 12, background: "#f5f5f7", borderRadius: 10, marginBottom: 12 }}>{profilePhone || user?.phone || "Sin telefono"}</div>
+            <label style={{ display: "block", fontSize: 13, color: "#555", marginBottom: 6 }}>Foto tipo carnet</label>
+            {profilePhotoUrl && <img src={profilePhotoUrl} alt="Foto de perfil" style={{ width: 84, height: 84, borderRadius: "50%", objectFit: "cover", marginBottom: 10 }} />}
+            <input type="file" accept="image/*" onChange={handleProfilePhotoChange} style={{ width: "100%", marginBottom: 8 }} />
+            {photoError && <div style={{ color: "#c00", fontSize: 13, marginBottom: 12 }}>{photoError}</div>}
             <div style={{ display: "flex", gap: 10 }}>
               <button onClick={() => setProfileOpen(false)} style={{ flex: 1, padding: 12, border: "none", borderRadius: 10, background: "#f2f2f7", fontWeight: 600 }}>Cancelar</button>
               <button onClick={saveProfile} disabled={savingProfile} style={{ flex: 1, padding: 12, border: "none", borderRadius: 10, background: "#007AFF", color: "white", fontWeight: 600 }}>{savingProfile ? "Guardando..." : "Guardar"}</button>

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { useRouter } from "next/router";
 import LeafletMap from "../../../packages/ui/LeafletMap";
 
@@ -15,6 +15,33 @@ const formatGuarani = (value: number) =>
     currency: "PYG",
     maximumFractionDigits: 0,
   }).format(value);
+
+const readFileAsDataUrl = (file: File) =>
+  new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+
+const validateFacePhoto = async (file: File) => {
+  const FaceDetectorCtor = (window as any).FaceDetector;
+  if (!FaceDetectorCtor) {
+    throw new Error("face_detector_unavailable");
+  }
+
+  const bitmap = await createImageBitmap(file);
+  const detector = new FaceDetectorCtor({
+    fastMode: false,
+    maxDetectedFaces: 1,
+  });
+  const faces = await detector.detect(bitmap);
+  bitmap.close?.();
+
+  if (!Array.isArray(faces) || faces.length !== 1) {
+    throw new Error("invalid_face_count");
+  }
+};
 
 type RideState =
   | "PENDIENTE"
@@ -113,9 +140,11 @@ export default function RiderPage() {
   const socketRef = useRef<any | null>(null);
   const [user, setUser] = useState<User | null>(null);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [vehicleDetailsOpen, setVehicleDetailsOpen] = useState(false);
   const [profileName, setProfileName] = useState("");
   const [profilePhone, setProfilePhone] = useState("");
   const [profilePhotoUrl, setProfilePhotoUrl] = useState("");
+  const [photoError, setPhotoError] = useState("");
   const [profilePlaca, setProfilePlaca] = useState("");
   const [profileMarca, setProfileMarca] = useState("");
   const [profileModelo, setProfileModelo] = useState("");
@@ -840,13 +869,7 @@ export default function RiderPage() {
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
-          name: profileName,
-          phone: profilePhone,
           photoUrl: profilePhotoUrl,
-          placa: profilePlaca,
-          marca: profileMarca,
-          modelo: profileModelo,
-          color: profileColor,
         }),
       });
 
@@ -865,6 +888,27 @@ export default function RiderPage() {
       alert("No se pudo guardar el perfil del conductor.");
     } finally {
       setSavingProfile(false);
+    }
+  };
+
+  const handleProfilePhotoChange = async (
+    event: ChangeEvent<HTMLInputElement>,
+  ) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setPhotoError("");
+    try {
+      await validateFacePhoto(file);
+      const dataUrl = await readFileAsDataUrl(file);
+      setProfilePhotoUrl(dataUrl);
+    } catch (err) {
+      const message =
+        err instanceof Error && err.message === "face_detector_unavailable"
+          ? "Este navegador no permite validar rostro. Usa un navegador compatible para cargar foto tipo carnet."
+          : "La foto debe mostrar exactamente un rostro visible tipo carnet.";
+      setPhotoError(message);
+      event.target.value = "";
     }
   };
 
@@ -1236,20 +1280,25 @@ export default function RiderPage() {
           <div style={{ width: "min(92vw, 460px)", maxHeight: "86vh", overflowY: "auto", background: "white", borderRadius: 18, padding: 22, boxShadow: "0 20px 50px rgba(0,0,0,0.25)" }}>
             <h2 style={{ margin: "0 0 16px", fontSize: 20 }}>Perfil del conductor</h2>
             <label style={{ display: "block", fontSize: 13, color: "#555", marginBottom: 6 }}>Nombre</label>
-            <input value={profileName} onChange={(e) => setProfileName(e.target.value)} style={{ width: "100%", padding: 12, border: "1px solid #ddd", borderRadius: 10, marginBottom: 12 }} />
+            <div style={{ padding: 12, background: "#f5f5f7", borderRadius: 10, marginBottom: 12 }}>{profileName || user?.name || "Sin nombre"}</div>
             <label style={{ display: "block", fontSize: 13, color: "#555", marginBottom: 6 }}>Telefono</label>
-            <input value={profilePhone} onChange={(e) => setProfilePhone(e.target.value)} style={{ width: "100%", padding: 12, border: "1px solid #ddd", borderRadius: 10, marginBottom: 12 }} />
-            <label style={{ display: "block", fontSize: 13, color: "#555", marginBottom: 6 }}>Foto URL</label>
-            <input value={profilePhotoUrl} onChange={(e) => setProfilePhotoUrl(e.target.value)} style={{ width: "100%", padding: 12, border: "1px solid #ddd", borderRadius: 10, marginBottom: 12 }} />
+            <div style={{ padding: 12, background: "#f5f5f7", borderRadius: 10, marginBottom: 12 }}>{profilePhone || user?.phone || "Sin telefono"}</div>
+            <label style={{ display: "block", fontSize: 13, color: "#555", marginBottom: 6 }}>Foto tipo carnet</label>
+            {profilePhotoUrl && <img src={profilePhotoUrl} alt="Foto de perfil" style={{ width: 84, height: 84, borderRadius: "50%", objectFit: "cover", marginBottom: 10 }} />}
+            <input type="file" accept="image/*" onChange={handleProfilePhotoChange} style={{ width: "100%", marginBottom: 8 }} />
+            {photoError && <div style={{ color: "#c00", fontSize: 13, marginBottom: 12 }}>{photoError}</div>}
             <div style={{ height: 1, background: "#eee", margin: "8px 0 16px" }} />
-            <label style={{ display: "block", fontSize: 13, color: "#555", marginBottom: 6 }}>Chapa</label>
-            <input value={profilePlaca} onChange={(e) => setProfilePlaca(e.target.value)} style={{ width: "100%", padding: 12, border: "1px solid #ddd", borderRadius: 10, marginBottom: 12 }} />
-            <label style={{ display: "block", fontSize: 13, color: "#555", marginBottom: 6 }}>Marca</label>
-            <input value={profileMarca} onChange={(e) => setProfileMarca(e.target.value)} style={{ width: "100%", padding: 12, border: "1px solid #ddd", borderRadius: 10, marginBottom: 12 }} />
-            <label style={{ display: "block", fontSize: 13, color: "#555", marginBottom: 6 }}>Modelo</label>
-            <input value={profileModelo} onChange={(e) => setProfileModelo(e.target.value)} style={{ width: "100%", padding: 12, border: "1px solid #ddd", borderRadius: 10, marginBottom: 12 }} />
-            <label style={{ display: "block", fontSize: 13, color: "#555", marginBottom: 6 }}>Color</label>
-            <input value={profileColor} onChange={(e) => setProfileColor(e.target.value)} style={{ width: "100%", padding: 12, border: "1px solid #ddd", borderRadius: 10, marginBottom: 18 }} />
+            <button onClick={() => setVehicleDetailsOpen((open) => !open)} style={{ width: "100%", padding: 12, border: "1px solid #ddd", borderRadius: 10, background: "white", fontWeight: 700, marginBottom: vehicleDetailsOpen ? 12 : 18 }}>
+              Datos del vehiculo
+            </button>
+            {vehicleDetailsOpen && (
+              <div style={{ background: "#f5f5f7", borderRadius: 12, padding: 12, marginBottom: 18 }}>
+                <div style={{ marginBottom: 8 }}><strong>Chapa:</strong> {profilePlaca || "No cargada"}</div>
+                <div style={{ marginBottom: 8 }}><strong>Marca:</strong> {profileMarca || "No cargada"}</div>
+                <div style={{ marginBottom: 8 }}><strong>Modelo:</strong> {profileModelo || "No cargado"}</div>
+                <div><strong>Color:</strong> {profileColor || "No cargado"}</div>
+              </div>
+            )}
             <div style={{ display: "flex", gap: 10 }}>
               <button onClick={() => setProfileOpen(false)} style={{ flex: 1, padding: 12, border: "none", borderRadius: 10, background: "#f2f2f7", fontWeight: 600 }}>Cancelar</button>
               <button onClick={saveProfile} disabled={savingProfile} style={{ flex: 1, padding: 12, border: "none", borderRadius: 10, background: "#007AFF", color: "white", fontWeight: 600 }}>{savingProfile ? "Guardando..." : "Guardar"}</button>
