@@ -37,6 +37,10 @@ export default function DriverLoginPage() {
       });
       const data = await res.json();
       if (!res.ok) {
+        if (res.status === 403 && data.error === "driver_not_approved") {
+          alert(data.message || "Tu cuenta aun no ha sido aprobada por un administrador.");
+          return;
+        }
         if (res.status === 403 && data.error === "not_approved") {
           alert("Tu cuenta aún no ha sido aprobada por un administrador.");
           return;

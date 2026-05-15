@@ -220,7 +220,7 @@ app.post("/auth/login", async (req, res) => {
     // conductor pendiente
     if (
       user.role === "DRIVER" &&
-      (!user.approved || user.documentStatus !== "APPROVED")
+      (!user.approved || user.documentStatus === "REJECTED")
     ) {
       return res.status(403).json({
         error: "driver_not_approved",
