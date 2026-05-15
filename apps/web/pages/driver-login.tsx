@@ -2,6 +2,8 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/router";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
+const DRIVER_USER_KEY = "movi:driver:user";
+const DRIVER_TOKEN_KEY = "movi:driver:token";
 
 export default function DriverLoginPage() {
   const [email, setEmail] = useState("");
@@ -48,6 +50,8 @@ export default function DriverLoginPage() {
       }
       localStorage.setItem("movi:token", data.token);
       localStorage.setItem("movi:user", JSON.stringify(data.user));
+      localStorage.setItem(DRIVER_TOKEN_KEY, data.token);
+      localStorage.setItem(DRIVER_USER_KEY, JSON.stringify(data.user));
       router.push("/rider");
     } catch (err) {
       console.error(err);

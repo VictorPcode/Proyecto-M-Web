@@ -5,6 +5,8 @@ import LeafletMap from "../../../packages/ui/LeafletMap";
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
 const RIDER_RIDE_SNAPSHOT_KEY = "movi:rider:rideSnapshot";
 const PASSED_RIDES_KEY = "movi:rider:passedRides";
+const DRIVER_USER_KEY = "movi:driver:user";
+const DRIVER_TOKEN_KEY = "movi:driver:token";
 const PASSED_RIDE_TTL_MS = 10 * 60 * 1000;
 const NEARBY_REQUEST_RADIUS_KM = 4;
 const NEAR_DESTINATION_THRESHOLD_KM = 2;
@@ -48,6 +50,50 @@ const validateFacePhoto = async (file: File) => {
 
   if (!Array.isArray(faces) || faces.length !== 1) {
     throw new Error("invalid_face_count");
+  }
+};
+
+const getDriverUser = () => {
+  const specific = localStorage.getItem(DRIVER_USER_KEY);
+  if (specific) return specific;
+
+  const legacy = localStorage.getItem("movi:user");
+  if (!legacy) return null;
+
+  try {
+    const parsed = JSON.parse(legacy);
+    return parsed?.role === "DRIVER" ? legacy : null;
+  } catch {
+    return null;
+  }
+};
+
+const getDriverToken = () => {
+  const specific = localStorage.getItem(DRIVER_TOKEN_KEY);
+  if (specific) return specific;
+
+  const legacyUser = getDriverUser();
+  return legacyUser ? localStorage.getItem("movi:token") : null;
+};
+
+const setDriverSession = (user: User, token?: string | null) => {
+  localStorage.setItem(DRIVER_USER_KEY, JSON.stringify(user));
+  if (token) localStorage.setItem(DRIVER_TOKEN_KEY, token);
+};
+
+const clearDriverSession = () => {
+  localStorage.removeItem(DRIVER_USER_KEY);
+  localStorage.removeItem(DRIVER_TOKEN_KEY);
+  const legacy = localStorage.getItem("movi:user");
+  try {
+    const parsed = legacy ? JSON.parse(legacy) : null;
+    if (parsed?.role === "DRIVER") {
+      localStorage.removeItem("movi:user");
+      localStorage.removeItem("movi:token");
+    }
+  } catch {
+    localStorage.removeItem("movi:user");
+    localStorage.removeItem("movi:token");
   }
 };
 
@@ -204,9 +250,9 @@ export default function RiderPage() {
 
   useEffect(() => {
     const raw =
-      typeof window !== "undefined" ? localStorage.getItem("movi:user") : null;
+      typeof window !== "undefined" ? getDriverUser() : null;
     const token =
-      typeof window !== "undefined" ? localStorage.getItem("movi:token") : null;
+      typeof window !== "undefined" ? getDriverToken() : null;
     if (!raw || !token) {
       router.replace("/driver-login");
       return;
@@ -217,8 +263,7 @@ export default function RiderPage() {
       syncProfileForm(parsed);
       if (parsed.role !== "DRIVER") {
         // not a driver; clear and bounce
-        localStorage.removeItem("movi:user");
-        localStorage.removeItem("movi:token");
+        clearDriverSession();
         alert("Debe iniciar sesión con una cuenta de conductor.");
         router.replace("/driver-login");
         return;
@@ -226,8 +271,7 @@ export default function RiderPage() {
       // bloquear conductores no aprobados ANTES de conectar socket
       if (!parsed.approved) {
         setApprovalError(true);
-        localStorage.removeItem("movi:user");
-        localStorage.removeItem("movi:token");
+        clearDriverSession();
         return;
       }
 
@@ -246,8 +290,7 @@ export default function RiderPage() {
       }
     } catch (e) {
       console.error("error parsing stored user", e);
-      localStorage.removeItem("movi:user");
-      localStorage.removeItem("movi:token");
+      clearDriverSession();
       router.replace("/driver-login");
       return;
     }
@@ -488,7 +531,7 @@ export default function RiderPage() {
           }
           setUser(profile);
           syncProfileForm(profile);
-          localStorage.setItem("movi:user", JSON.stringify(profile));
+          setDriverSession(profile, token);
           if (profile.vehicle) {
             localStorage.setItem(
               "movi:vehicle",
@@ -618,7 +661,7 @@ export default function RiderPage() {
           lat: loc[1],
         });
 
-        const token = localStorage.getItem("movi:token");
+        const token = getDriverToken();
         const now = Date.now();
         if (token && now - lastPendingRefreshRef.current > 15000) {
           lastPendingRefreshRef.current = now;
@@ -905,7 +948,7 @@ export default function RiderPage() {
   };
 
   const saveProfile = async () => {
-    const token = localStorage.getItem("movi:token");
+    const token = getDriverToken();
     if (!token || !user) return;
 
     setSavingProfile(true);
@@ -926,7 +969,7 @@ export default function RiderPage() {
       const updated = await res.json();
       setUser(updated);
       syncProfileForm(updated);
-      localStorage.setItem("movi:user", JSON.stringify(updated));
+      setDriverSession(updated, token);
       if (updated.vehicle) {
         localStorage.setItem("movi:vehicle", JSON.stringify(updated.vehicle));
       }
@@ -1042,8 +1085,7 @@ export default function RiderPage() {
         return;
       }
     }
-    localStorage.removeItem("movi:user");
-    localStorage.removeItem("movi:token");
+    clearDriverSession();
     localStorage.removeItem("movi:vehicle");
     localStorage.removeItem(RIDER_RIDE_SNAPSHOT_KEY);
     socketRef.current?.disconnect();

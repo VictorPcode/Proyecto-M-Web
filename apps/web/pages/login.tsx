@@ -3,6 +3,10 @@ import { useRouter } from "next/router";
 import Link from "next/link";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
+const PASSENGER_USER_KEY = "movi:passenger:user";
+const PASSENGER_TOKEN_KEY = "movi:passenger:token";
+const DRIVER_USER_KEY = "movi:driver:user";
+const DRIVER_TOKEN_KEY = "movi:driver:token";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -42,8 +46,12 @@ export default function LoginPage() {
       localStorage.setItem("movi:token", data.token);
       localStorage.setItem("movi:user", JSON.stringify(data.user));
       if (data.user?.role === "DRIVER") {
+        localStorage.setItem(DRIVER_TOKEN_KEY, data.token);
+        localStorage.setItem(DRIVER_USER_KEY, JSON.stringify(data.user));
         router.push("/rider");
       } else {
+        localStorage.setItem(PASSENGER_TOKEN_KEY, data.token);
+        localStorage.setItem(PASSENGER_USER_KEY, JSON.stringify(data.user));
         router.push("/client");
       }
     } catch (err) {

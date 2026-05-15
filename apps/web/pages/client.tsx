@@ -7,6 +7,8 @@ import { buildStateQuery } from "../utils/query";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
 const CLIENT_RIDE_SNAPSHOT_KEY = "movi:client:rideSnapshot";
+const PASSENGER_USER_KEY = "movi:passenger:user";
+const PASSENGER_TOKEN_KEY = "movi:passenger:token";
 const CANCEL_REASONS = [
   "El conductor no avanza hacia mí",
   "Cambio de destino o de plan",
@@ -117,6 +119,50 @@ const validateFacePhoto = async (file: File) => {
   }
 };
 
+const getPassengerUser = () => {
+  const specific = localStorage.getItem(PASSENGER_USER_KEY);
+  if (specific) return specific;
+
+  const legacy = localStorage.getItem("movi:user");
+  if (!legacy) return null;
+
+  try {
+    const parsed = JSON.parse(legacy);
+    return parsed?.role === "PASSENGER" ? legacy : null;
+  } catch {
+    return null;
+  }
+};
+
+const getPassengerToken = () => {
+  const specific = localStorage.getItem(PASSENGER_TOKEN_KEY);
+  if (specific) return specific;
+
+  const legacyUser = getPassengerUser();
+  return legacyUser ? localStorage.getItem("movi:token") : null;
+};
+
+const setPassengerSession = (user: User, token?: string | null) => {
+  localStorage.setItem(PASSENGER_USER_KEY, JSON.stringify(user));
+  if (token) localStorage.setItem(PASSENGER_TOKEN_KEY, token);
+};
+
+const clearPassengerSession = () => {
+  localStorage.removeItem(PASSENGER_USER_KEY);
+  localStorage.removeItem(PASSENGER_TOKEN_KEY);
+  const legacy = localStorage.getItem("movi:user");
+  try {
+    const parsed = legacy ? JSON.parse(legacy) : null;
+    if (parsed?.role === "PASSENGER") {
+      localStorage.removeItem("movi:user");
+      localStorage.removeItem("movi:token");
+    }
+  } catch {
+    localStorage.removeItem("movi:user");
+    localStorage.removeItem("movi:token");
+  }
+};
+
 export default function ClientPage() {
   const [messages, setMessages] = useState<string[]>([]);
   const [currentRide, setCurrentRide] = useState<Ride | null>(null);
@@ -185,7 +231,7 @@ export default function ClientPage() {
   };
 
   useEffect(() => {
-    const raw = localStorage.getItem("movi:user");
+    const raw = getPassengerUser();
     if (!raw) {
       router.replace("/register");
       return;
@@ -195,8 +241,7 @@ export default function ClientPage() {
       // Validar que sea un usuario válido y no un objeto de error
       if (parsed && parsed.error) {
         console.error("Invalid user data in localStorage:", parsed);
-        localStorage.removeItem("movi:user");
-        localStorage.removeItem("movi:token");
+        clearPassengerSession();
         router.replace("/login");
         return;
       }
@@ -204,19 +249,17 @@ export default function ClientPage() {
         setUser(parsed);
       } else {
         console.error("Invalid user format:", parsed);
-        localStorage.removeItem("movi:user");
-        localStorage.removeItem("movi:token");
+        clearPassengerSession();
         router.replace("/login");
         return;
       }
     } catch (e) {
       console.error("Error parsing user data:", e);
-      localStorage.removeItem("movi:user");
-      localStorage.removeItem("movi:token");
+      clearPassengerSession();
       router.replace("/login");
       return;
     }
-    const t = localStorage.getItem("movi:token") || "";
+    const t = getPassengerToken() || "";
     setTokenSnippet(t ? `${t.slice(0, 12)}…` : "none");
     setMounted(true);
   }, [router]);
@@ -231,7 +274,7 @@ export default function ClientPage() {
 
   useEffect(() => {
     if (!mounted || !user?.id) return;
-    const token = localStorage.getItem("movi:token");
+    const token = getPassengerToken();
     if (!token) return;
 
     (async () => {
@@ -251,7 +294,7 @@ export default function ClientPage() {
           setProfileName(profile.name || "");
           setProfilePhone(profile.phone || "");
           setProfilePhotoUrl(profile.photoUrl || "");
-          localStorage.setItem("movi:user", JSON.stringify(profile));
+          setPassengerSession(profile, token);
         }
 
         if (ridesRes.ok) {
@@ -269,7 +312,7 @@ export default function ClientPage() {
 
     const onReturnToForeground = async () => {
       if (document.visibilityState !== "visible") return;
-      const token = localStorage.getItem("movi:token");
+      const token = getPassengerToken();
       if (!token) return;
 
       if (passengerRef.current && !passengerRef.current.connected) {
@@ -487,7 +530,7 @@ export default function ClientPage() {
       const { io } = await import("socket.io-client");
       const token =
         typeof window !== "undefined"
-          ? (localStorage.getItem("movi:token") ?? undefined)
+          ? (getPassengerToken() ?? undefined)
           : undefined;
       socket = io(`${API_URL}/passengers`, { auth: { token } });
       passengerRef.current = socket;
@@ -497,7 +540,7 @@ export default function ClientPage() {
         setDebugStatus(`conectado: ${socket.id}`);
 
         // Fetch active ride on reconnect to restore state after page reload
-        const token = typeof window !== "undefined" ? localStorage.getItem("movi:token") : null;
+        const token = typeof window !== "undefined" ? getPassengerToken() : null;
         if (token) {
           (async () => {
             try {
@@ -641,7 +684,7 @@ export default function ClientPage() {
     if (!isFinishedWithFare) return;
 
     const token =
-      typeof window !== "undefined" ? localStorage.getItem("movi:token") : null;
+      typeof window !== "undefined" ? getPassengerToken() : null;
 
     const checkTimer = setTimeout(async () => {
       if (!token) return;
@@ -699,7 +742,7 @@ export default function ClientPage() {
     }
 
     const token =
-      typeof window !== "undefined" ? localStorage.getItem("movi:token") : null;
+      typeof window !== "undefined" ? getPassengerToken() : null;
     if (!token || (originQuery && destQuery)) return;
 
     (async () => {
@@ -742,7 +785,7 @@ export default function ClientPage() {
       });
       const u = await res.json();
       setUser(u);
-      localStorage.setItem("movi:user", JSON.stringify(u));
+      setPassengerSession(u, getPassengerToken());
     } catch (err) {
       console.error("register error", err);
     } finally {
@@ -988,15 +1031,14 @@ export default function ClientPage() {
         return;
       }
     }
-    localStorage.removeItem("movi:user");
-    localStorage.removeItem("movi:token");
+    clearPassengerSession();
     localStorage.removeItem(CLIENT_RIDE_SNAPSHOT_KEY);
     passengerRef.current?.disconnect();
     router.push("/login");
   };
 
   const saveProfile = async () => {
-    const token = localStorage.getItem("movi:token");
+    const token = getPassengerToken();
     if (!token || !user) return;
 
     setSavingProfile(true);
@@ -1016,7 +1058,7 @@ export default function ClientPage() {
 
       const updated = await res.json();
       setUser(updated);
-      localStorage.setItem("movi:user", JSON.stringify(updated));
+      setPassengerSession(updated, token);
       setProfileOpen(false);
     } catch (err) {
       console.error("Error saving profile:", err);
