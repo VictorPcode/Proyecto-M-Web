@@ -23,7 +23,13 @@ console.log(
 );
 console.log("API_URL:", API_URL);
 
-type User = { id: string; name: string; email: string };
+type User = {
+  id: string;
+  name: string;
+  email: string;
+  phone?: string | null;
+  photoUrl?: string | null;
+};
 
 type RideState =
   | "PENDIENTE"
@@ -32,7 +38,7 @@ type RideState =
   | "FINALIZADO"
   | "CANCELADO";
 
-type DriverUser = { id: string; name?: string };
+type DriverUser = { id: string; name?: string; photoUrl?: string | null };
 
 type Vehicle = {
   placa?: string;
@@ -87,6 +93,12 @@ export default function ClientPage() {
   const [tokenSnippet, setTokenSnippet] = useState<string>("none");
 
   const [user, setUser] = useState<User | null>(null);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [profileName, setProfileName] = useState("");
+  const [profilePhone, setProfilePhone] = useState("");
+  const [profilePhotoUrl, setProfilePhotoUrl] = useState("");
+  const [savingProfile, setSavingProfile] = useState(false);
   const [registering, setRegistering] = useState(false);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -179,6 +191,41 @@ export default function ClientPage() {
     window.addEventListener("resize", update);
     return () => window.removeEventListener("resize", update);
   }, []);
+
+  useEffect(() => {
+    if (!mounted || !user?.id) return;
+    const token = localStorage.getItem("movi:token");
+    if (!token) return;
+
+    (async () => {
+      try {
+        const [meRes, ridesRes] = await Promise.all([
+          fetch(`${API_URL}/me`, {
+            headers: { Authorization: `Bearer ${token}` },
+          }),
+          fetch(`${API_URL}/me/rides`, {
+            headers: { Authorization: `Bearer ${token}` },
+          }),
+        ]);
+
+        if (meRes.ok) {
+          const profile = await meRes.json();
+          setUser(profile);
+          setProfileName(profile.name || "");
+          setProfilePhone(profile.phone || "");
+          setProfilePhotoUrl(profile.photoUrl || "");
+          localStorage.setItem("movi:user", JSON.stringify(profile));
+        }
+
+        if (ridesRes.ok) {
+          const rides = await ridesRes.json();
+          if (Array.isArray(rides)) setHistory(rides);
+        }
+      } catch (err) {
+        console.warn("Error loading passenger profile:", err);
+      }
+    })();
+  }, [mounted, user?.id]);
 
   useEffect(() => {
     if (typeof document === "undefined") return;
@@ -911,6 +958,39 @@ export default function ClientPage() {
     router.push("/login");
   };
 
+  const saveProfile = async () => {
+    const token = localStorage.getItem("movi:token");
+    if (!token || !user) return;
+
+    setSavingProfile(true);
+    try {
+      const res = await fetch(`${API_URL}/me`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          name: profileName,
+          phone: profilePhone,
+          photoUrl: profilePhotoUrl,
+        }),
+      });
+
+      if (!res.ok) throw new Error("profile_update_failed");
+
+      const updated = await res.json();
+      setUser(updated);
+      localStorage.setItem("movi:user", JSON.stringify(updated));
+      setProfileOpen(false);
+    } catch (err) {
+      console.error("Error saving profile:", err);
+      alert("No se pudo guardar el perfil.");
+    } finally {
+      setSavingProfile(false);
+    }
+  };
+
   const selectDestSuggestion = async (feature: Suggestion) => {
     const lng = Number(feature.lon);
     const lat = Number(feature.lat);
@@ -978,8 +1058,42 @@ export default function ClientPage() {
             top: isMobile ? 10 : 24,
             right: isMobile ? 10 : 24,
             zIndex: 1100,
+            display: "flex",
+            gap: 8,
           }}
         >
+          <button
+            onClick={() => setProfileOpen(true)}
+            style={{
+              padding: "10px 14px",
+              background: "white",
+              color: "#1c1c1e",
+              border: "1px solid #e5e5ea",
+              borderRadius: "8px",
+              fontSize: 13,
+              fontWeight: 600,
+              cursor: "pointer",
+              boxShadow: "0 2px 8px rgba(0, 0, 0, 0.1)",
+            }}
+          >
+            Perfil
+          </button>
+          <button
+            onClick={() => setHistoryOpen(true)}
+            style={{
+              padding: "10px 14px",
+              background: "white",
+              color: "#1c1c1e",
+              border: "1px solid #e5e5ea",
+              borderRadius: "8px",
+              fontSize: 13,
+              fontWeight: 600,
+              cursor: "pointer",
+              boxShadow: "0 2px 8px rgba(0, 0, 0, 0.1)",
+            }}
+          >
+            Historial
+          </button>
           <button
             onClick={handleLogout}
             style={{
@@ -997,6 +1111,45 @@ export default function ClientPage() {
           >
             Cerrar sesión
           </button>
+        </div>
+      )}
+
+      {profileOpen && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 2200, background: "rgba(0,0,0,0.35)", display: "grid", placeItems: "center", padding: 16 }}>
+          <div style={{ width: "min(92vw, 420px)", background: "white", borderRadius: 18, padding: 22, boxShadow: "0 20px 50px rgba(0,0,0,0.25)" }}>
+            <h2 style={{ margin: "0 0 16px", fontSize: 20 }}>Mi perfil</h2>
+            <label style={{ display: "block", fontSize: 13, color: "#555", marginBottom: 6 }}>Nombre</label>
+            <input value={profileName} onChange={(e) => setProfileName(e.target.value)} style={{ width: "100%", padding: 12, border: "1px solid #ddd", borderRadius: 10, marginBottom: 12 }} />
+            <label style={{ display: "block", fontSize: 13, color: "#555", marginBottom: 6 }}>Telefono</label>
+            <input value={profilePhone} onChange={(e) => setProfilePhone(e.target.value)} style={{ width: "100%", padding: 12, border: "1px solid #ddd", borderRadius: 10, marginBottom: 12 }} />
+            <label style={{ display: "block", fontSize: 13, color: "#555", marginBottom: 6 }}>Foto URL</label>
+            <input value={profilePhotoUrl} onChange={(e) => setProfilePhotoUrl(e.target.value)} style={{ width: "100%", padding: 12, border: "1px solid #ddd", borderRadius: 10, marginBottom: 18 }} />
+            <div style={{ display: "flex", gap: 10 }}>
+              <button onClick={() => setProfileOpen(false)} style={{ flex: 1, padding: 12, border: "none", borderRadius: 10, background: "#f2f2f7", fontWeight: 600 }}>Cancelar</button>
+              <button onClick={saveProfile} disabled={savingProfile} style={{ flex: 1, padding: 12, border: "none", borderRadius: 10, background: "#007AFF", color: "white", fontWeight: 600 }}>{savingProfile ? "Guardando..." : "Guardar"}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {historyOpen && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 2200, background: "rgba(0,0,0,0.35)", display: "grid", placeItems: "center", padding: 16 }}>
+          <div style={{ width: "min(92vw, 560px)", maxHeight: "80vh", overflowY: "auto", background: "white", borderRadius: 18, padding: 22, boxShadow: "0 20px 50px rgba(0,0,0,0.25)" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+              <h2 style={{ margin: 0, fontSize: 20 }}>Historial</h2>
+              <button onClick={() => setHistoryOpen(false)} style={{ border: "none", background: "transparent", fontSize: 24, cursor: "pointer" }}>x</button>
+            </div>
+            {history.length === 0 ? (
+              <div style={{ color: "#777", fontSize: 14 }}>Aun no hay viajes registrados.</div>
+            ) : history.map((ride) => (
+              <div key={ride.id} style={{ border: "1px solid #eee", borderRadius: 12, padding: 12, marginBottom: 10 }}>
+                <div style={{ fontWeight: 700, marginBottom: 6 }}>{ride.state}</div>
+                <div style={{ color: "#555", fontSize: 13 }}>Origen: {ride.originLat.toFixed(5)}, {ride.originLng.toFixed(5)}</div>
+                <div style={{ color: "#555", fontSize: 13 }}>Destino: {ride.destLat.toFixed(5)}, {ride.destLng.toFixed(5)}</div>
+                <div style={{ color: "#007AFF", fontWeight: 700, marginTop: 8 }}>{formatGuarani(ride.finalFare ?? ride.estimatedFare ?? 0)}</div>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
@@ -1342,22 +1495,35 @@ export default function ClientPage() {
                 borderBottom: "1px solid #f0f0f0",
               }}
             >
-              <div
-                style={{
-                  width: "56px",
-                  height: "56px",
-                  borderRadius: "50%",
-                  background: "#007AFF",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  color: "white",
-                  fontSize: 24,
-                  fontWeight: 600,
-                }}
-              >
-                {currentRide.driver?.name?.charAt(0)?.toUpperCase() || "C"}
-              </div>
+              {currentRide.driver?.photoUrl ? (
+                <img
+                  src={currentRide.driver.photoUrl}
+                  alt={currentRide.driver?.name || "Conductor"}
+                  style={{
+                    width: "56px",
+                    height: "56px",
+                    borderRadius: "50%",
+                    objectFit: "cover",
+                  }}
+                />
+              ) : (
+                <div
+                  style={{
+                    width: "56px",
+                    height: "56px",
+                    borderRadius: "50%",
+                    background: "#007AFF",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    color: "white",
+                    fontSize: 24,
+                    fontWeight: 600,
+                  }}
+                >
+                  {currentRide.driver?.name?.charAt(0)?.toUpperCase() || "C"}
+                </div>
+              )}
               <div style={{ flex: 1 }}>
                 <div
                   style={{

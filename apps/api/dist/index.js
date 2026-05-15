@@ -159,6 +159,7 @@ app.post("/auth/login", async (req, res) => {
         }
         const user = await prisma_1.default.user.findUnique({
             where: { email },
+            include: { vehicles: true },
         });
         if (!user) {
             return res.status(401).json({
@@ -185,10 +186,13 @@ app.post("/auth/login", async (req, res) => {
         }, JWT_SECRET, {
             expiresIn: "7d",
         });
-        const { password: _, ...safeUser } = user;
+        const { password: _, vehicles, ...safeUser } = user;
         return res.json({
             token,
-            user: safeUser,
+            user: {
+                ...safeUser,
+                vehicle: vehicles?.[0] || null,
+            },
         });
     }
     catch (err) {
@@ -397,6 +401,72 @@ app.get("/me", authMiddleware, async (req, res) => {
         return res.status(500).json({ error: "failed_get_me" });
     }
 });
+app.put("/me", authMiddleware, async (req, res) => {
+    try {
+        const userId = req.user?.id;
+        if (!userId)
+            return res.status(401).json({ error: "missing_user" });
+        const { name, phone, photoUrl, placa, marca, modelo, color, year, capacidad, } = req.body ?? {};
+        const current = await prisma_1.default.user.findUnique({
+            where: { id: userId },
+            include: { vehicles: true },
+        });
+        if (!current)
+            return res.status(404).json({ error: "not_found" });
+        await prisma_1.default.user.update({
+            where: { id: userId },
+            data: {
+                name: typeof name === "string" && name.trim() ? name.trim() : current.name,
+                phone: typeof phone === "string" ? phone.trim() || null : current.phone,
+                photoUrl: typeof photoUrl === "string" ? photoUrl.trim() || null : current.photoUrl,
+            },
+        });
+        if (current.role === "DRIVER") {
+            const hasVehicleData = [placa, marca, modelo, color].some((value) => typeof value === "string" && value.trim());
+            if (hasVehicleData) {
+                const existingVehicle = current.vehicles?.[0];
+                const vehicleData = {
+                    placa: typeof placa === "string" && placa.trim()
+                        ? placa.trim().toUpperCase()
+                        : existingVehicle?.placa || "",
+                    marca: typeof marca === "string" ? marca.trim() : existingVehicle?.marca,
+                    modelo: typeof modelo === "string" ? modelo.trim() : existingVehicle?.modelo,
+                    color: typeof color === "string" ? color.trim() : existingVehicle?.color,
+                    year: year ? Number(year) : existingVehicle?.year,
+                    capacidad: capacidad ? Number(capacidad) : existingVehicle?.capacidad,
+                    estado: existingVehicle?.estado || "DISPONIBLE",
+                    driverId: userId,
+                };
+                if (existingVehicle) {
+                    await prisma_1.default.vehicle.update({
+                        where: { id: existingVehicle.id },
+                        data: vehicleData,
+                    });
+                }
+                else if (vehicleData.placa) {
+                    await prisma_1.default.vehicle.create({
+                        data: vehicleData,
+                    });
+                }
+            }
+        }
+        const updated = await prisma_1.default.user.findUnique({
+            where: { id: userId },
+            include: { vehicles: true },
+        });
+        if (!updated)
+            return res.status(404).json({ error: "not_found" });
+        const { password, vehicles, ...safe } = updated;
+        return res.json({
+            ...safe,
+            vehicle: vehicles?.[0] || null,
+        });
+    }
+    catch (err) {
+        console.error("UPDATE ME ERROR:", err);
+        return res.status(500).json({ error: "failed_update_me" });
+    }
+});
 app.get("/me/rides", authMiddleware, async (req, res) => {
     try {
         const userId = req.user?.id;
@@ -497,6 +567,17 @@ app.get("/rides", authMiddleware, async (req, res) => {
                 where.state = {
                     in: stateList,
                 };
+            }
+        }
+        if (req.user?.role === "PASSENGER" && req.user.id) {
+            where.passengerId = req.user.id;
+        }
+        else if (req.user?.role === "DRIVER" && req.user.id) {
+            if (where.state === RideState.PENDIENTE) {
+                where.driverId = null;
+            }
+            else {
+                where.driverId = req.user.id;
             }
         }
         const rides = await prisma_1.default.ride.findMany({

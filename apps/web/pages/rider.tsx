@@ -51,6 +51,9 @@ type ChatMessage = {
 type User = {
   id: string;
   name?: string;
+  email?: string;
+  phone?: string | null;
+  photoUrl?: string | null;
   vehicle?: {
     id: string; // Add vehicle ID to type
     placa?: string;
@@ -109,6 +112,15 @@ export default function RiderPage() {
   const [debugStatus, setDebugStatus] = useState<string>("cliente no montado");
   const socketRef = useRef<any | null>(null);
   const [user, setUser] = useState<User | null>(null);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [profileName, setProfileName] = useState("");
+  const [profilePhone, setProfilePhone] = useState("");
+  const [profilePhotoUrl, setProfilePhotoUrl] = useState("");
+  const [profilePlaca, setProfilePlaca] = useState("");
+  const [profileMarca, setProfileMarca] = useState("");
+  const [profileModelo, setProfileModelo] = useState("");
+  const [profileColor, setProfileColor] = useState("");
+  const [savingProfile, setSavingProfile] = useState(false);
   const [driverLocation, setDriverLocation] = useState<[number, number]>([
     -57.6, -25.3,
   ]);
@@ -133,6 +145,16 @@ export default function RiderPage() {
   const activeRideRef = useRef<RideRequest | null>(null);
   const router = useRouter();
 
+  const syncProfileForm = (profile: User) => {
+    setProfileName(profile.name || "");
+    setProfilePhone(profile.phone || "");
+    setProfilePhotoUrl(profile.photoUrl || "");
+    setProfilePlaca(profile.vehicle?.placa || "");
+    setProfileMarca(profile.vehicle?.marca || "");
+    setProfileModelo(profile.vehicle?.modelo || "");
+    setProfileColor(profile.vehicle?.color || "");
+  };
+
   useEffect(() => {
     if (typeof window === "undefined") return;
     const update = () => setIsMobile(window.innerWidth <= 768);
@@ -153,6 +175,7 @@ export default function RiderPage() {
     try {
       const parsed = JSON.parse(raw);
       setUser(parsed);
+      syncProfileForm(parsed);
       if (parsed.role !== "DRIVER") {
         // not a driver; clear and bounce
         localStorage.removeItem("movi:user");
@@ -477,6 +500,7 @@ export default function RiderPage() {
             return;
           }
           setUser(profile);
+          syncProfileForm(profile);
           localStorage.setItem("movi:user", JSON.stringify(profile));
           if (profile.vehicle) {
             localStorage.setItem(
@@ -803,20 +827,66 @@ export default function RiderPage() {
     setChatInput("");
   };
 
+  const saveProfile = async () => {
+    const token = localStorage.getItem("movi:token");
+    if (!token || !user) return;
+
+    setSavingProfile(true);
+    try {
+      const res = await fetch(`${API_URL}/me`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          name: profileName,
+          phone: profilePhone,
+          photoUrl: profilePhotoUrl,
+          placa: profilePlaca,
+          marca: profileMarca,
+          modelo: profileModelo,
+          color: profileColor,
+        }),
+      });
+
+      if (!res.ok) throw new Error("profile_update_failed");
+
+      const updated = await res.json();
+      setUser(updated);
+      syncProfileForm(updated);
+      localStorage.setItem("movi:user", JSON.stringify(updated));
+      if (updated.vehicle) {
+        localStorage.setItem("movi:vehicle", JSON.stringify(updated.vehicle));
+      }
+      setProfileOpen(false);
+    } catch (err) {
+      console.error("Error saving driver profile:", err);
+      alert("No se pudo guardar el perfil del conductor.");
+    } finally {
+      setSavingProfile(false);
+    }
+  };
+
   const accept = (ride: RideRequest) => {
     if (acceptingRideId) return;
 
     const driverId = user?.id || "demo-driver";
     // Priorizamos el vehiculo real de la BD si existe
     const realVehicle = user?.vehicle;
-    const vehicleId = realVehicle?.id || `veh-${driverId}`;
+    if (!realVehicle?.id || !realVehicle?.placa) {
+      setProfileOpen(true);
+      alert("Completa la placa y datos del vehiculo antes de aceptar viajes.");
+      return;
+    }
+    const vehicleId = realVehicle.id;
 
     // Si no hay vehículo real, usar datos locales o defaults
     const vehicle = {
-      placa: realVehicle?.placa || "SIN-PLACA",
-      marca: realVehicle?.marca || "Vehiculo",
-      modelo: realVehicle?.modelo || "Modelo",
-      color: realVehicle?.color || "Color",
+      placa: realVehicle.placa,
+      marca: realVehicle.marca || "",
+      modelo: realVehicle.modelo || "",
+      color: realVehicle.color || "",
     };
 
     console.log("Aceptando viaje con vehículo:", { vehicleId, vehicle });
@@ -1127,6 +1197,22 @@ export default function RiderPage() {
                 </div>
               </div>
               <button
+                onClick={() => setProfileOpen(true)}
+                style={{
+                  padding: "6px 12px",
+                  background: "white",
+                  color: "#1c1c1e",
+                  border: "1px solid #e5e5ea",
+                  borderRadius: "8px",
+                  fontSize: 12,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                Perfil
+              </button>
+              <button
                 onClick={handleLogout}
                 style={{
                   padding: "6px 12px",
@@ -1144,6 +1230,33 @@ export default function RiderPage() {
               </button>
             </div>
           </div>
+
+      {profileOpen && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 2200, background: "rgba(0,0,0,0.35)", display: "grid", placeItems: "center", padding: 16 }}>
+          <div style={{ width: "min(92vw, 460px)", maxHeight: "86vh", overflowY: "auto", background: "white", borderRadius: 18, padding: 22, boxShadow: "0 20px 50px rgba(0,0,0,0.25)" }}>
+            <h2 style={{ margin: "0 0 16px", fontSize: 20 }}>Perfil del conductor</h2>
+            <label style={{ display: "block", fontSize: 13, color: "#555", marginBottom: 6 }}>Nombre</label>
+            <input value={profileName} onChange={(e) => setProfileName(e.target.value)} style={{ width: "100%", padding: 12, border: "1px solid #ddd", borderRadius: 10, marginBottom: 12 }} />
+            <label style={{ display: "block", fontSize: 13, color: "#555", marginBottom: 6 }}>Telefono</label>
+            <input value={profilePhone} onChange={(e) => setProfilePhone(e.target.value)} style={{ width: "100%", padding: 12, border: "1px solid #ddd", borderRadius: 10, marginBottom: 12 }} />
+            <label style={{ display: "block", fontSize: 13, color: "#555", marginBottom: 6 }}>Foto URL</label>
+            <input value={profilePhotoUrl} onChange={(e) => setProfilePhotoUrl(e.target.value)} style={{ width: "100%", padding: 12, border: "1px solid #ddd", borderRadius: 10, marginBottom: 12 }} />
+            <div style={{ height: 1, background: "#eee", margin: "8px 0 16px" }} />
+            <label style={{ display: "block", fontSize: 13, color: "#555", marginBottom: 6 }}>Chapa</label>
+            <input value={profilePlaca} onChange={(e) => setProfilePlaca(e.target.value)} style={{ width: "100%", padding: 12, border: "1px solid #ddd", borderRadius: 10, marginBottom: 12 }} />
+            <label style={{ display: "block", fontSize: 13, color: "#555", marginBottom: 6 }}>Marca</label>
+            <input value={profileMarca} onChange={(e) => setProfileMarca(e.target.value)} style={{ width: "100%", padding: 12, border: "1px solid #ddd", borderRadius: 10, marginBottom: 12 }} />
+            <label style={{ display: "block", fontSize: 13, color: "#555", marginBottom: 6 }}>Modelo</label>
+            <input value={profileModelo} onChange={(e) => setProfileModelo(e.target.value)} style={{ width: "100%", padding: 12, border: "1px solid #ddd", borderRadius: 10, marginBottom: 12 }} />
+            <label style={{ display: "block", fontSize: 13, color: "#555", marginBottom: 6 }}>Color</label>
+            <input value={profileColor} onChange={(e) => setProfileColor(e.target.value)} style={{ width: "100%", padding: 12, border: "1px solid #ddd", borderRadius: 10, marginBottom: 18 }} />
+            <div style={{ display: "flex", gap: 10 }}>
+              <button onClick={() => setProfileOpen(false)} style={{ flex: 1, padding: 12, border: "none", borderRadius: 10, background: "#f2f2f7", fontWeight: 600 }}>Cancelar</button>
+              <button onClick={saveProfile} disabled={savingProfile} style={{ flex: 1, padding: 12, border: "none", borderRadius: 10, background: "#007AFF", color: "white", fontWeight: 600 }}>{savingProfile ? "Guardando..." : "Guardar"}</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Manual Input Modal */}
       {showManualInputModal && (
@@ -1332,6 +1445,29 @@ export default function RiderPage() {
           >
             Recoger a {activeRide.passengerName || "Pasajero"}
           </div>
+          {user?.vehicle && (
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "auto 1fr",
+                columnGap: 10,
+                rowGap: 3,
+                fontSize: 12,
+                color: "#555",
+                background: "#f5f5f7",
+                borderRadius: 10,
+                padding: 10,
+                marginBottom: 12,
+              }}
+            >
+              <span style={{ fontWeight: 700 }}>Chapa:</span>
+              <span>{user.vehicle.placa || "No cargada"}</span>
+              <span style={{ fontWeight: 700 }}>Modelo:</span>
+              <span>{`${user.vehicle.marca || ""} ${user.vehicle.modelo || ""}`.trim() || "No cargado"}</span>
+              <span style={{ fontWeight: 700 }}>Color:</span>
+              <span>{user.vehicle.color || "No cargado"}</span>
+            </div>
+          )}
           <div style={{ fontSize: 13, color: "#86868b", marginBottom: 10 }}>
             <div style={{ display: "flex", alignItems: "flex-start", gap: 6, marginBottom: 6 }}>
               <span style={{ color: "#007AFF", fontWeight: 700, minWidth: 12 }}>●</span>
