@@ -1471,6 +1471,10 @@ passengers.on("connection", (socket) => {
           typeof cancelPayload === "string"
             ? cancelPayload
             : cancelPayload?.rideId;
+        const reason =
+          typeof cancelPayload === "string"
+            ? undefined
+            : cancelPayload?.reason;
 
         if (!rideId) return;
 
@@ -1478,6 +1482,7 @@ passengers.on("connection", (socket) => {
         const payload = {
           rideId,
           newState: updated.state,
+          reason,
         };
 
         passengers.to(`ride:${rideId}`).emit("ride:status_changed", payload);

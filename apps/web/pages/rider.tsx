@@ -346,7 +346,7 @@ export default function RiderPage() {
 
       socket.on(
         "ride:status_changed",
-        (s: { rideId: string; newState: RideState }) => {
+        (s: { rideId: string; newState: RideState; reason?: string }) => {
           setAcceptingRideId((current) =>
             current === s.rideId ? null : current,
           );
@@ -363,6 +363,9 @@ export default function RiderPage() {
               setShowManualInputModal(false);
               setPendingFare(0);
               localStorage.removeItem(RIDER_RIDE_SNAPSHOT_KEY);
+              if (s.newState === "CANCELADO" && s.reason) {
+                alert(`El cliente canceló el viaje. Motivo: ${s.reason}`);
+              }
               return null;
             });
           } else if (s.newState === "ASIGNADO") {

@@ -1701,6 +1701,24 @@ export default function ClientPage() {
               Chatear con el conductor
             </button>
 
+            <button
+              onClick={openCancelRideModal}
+              style={{
+                width: "100%",
+                marginTop: 10,
+                padding: "12px 16px",
+                borderRadius: "12px",
+                background: "#fff",
+                color: "#FF3B30",
+                fontSize: 14,
+                fontWeight: 700,
+                border: "1px solid #FF3B30",
+                cursor: "pointer",
+              }}
+            >
+              Cancelar viaje
+            </button>
+
             {/* Estado del viaje */}
             <div
               style={{
@@ -1838,8 +1856,9 @@ export default function ClientPage() {
           </div>
         )}
 
-      {/* Cancel button - Bottom left corner (only when ride exists) */}
-      {currentRide && currentRide.state !== "FINALIZADO" && (
+      {/* Cancel button - Bottom left corner (only while searching before assignment) */}
+      {currentRide &&
+        currentRide.state === "PENDIENTE" && (
         <div
           style={{
             position: "fixed",
@@ -1850,7 +1869,7 @@ export default function ClientPage() {
             zIndex: 1000,
           }}
         >
-          {/* <button
+          <button
             className="ghost"
             onClick={openCancelRideModal}
             style={{
@@ -1863,7 +1882,7 @@ export default function ClientPage() {
             }}
           >
             Cancelar viaje
-          </button> */}
+          </button>
         </div>
       )}
 

@@ -1191,12 +1191,16 @@ passengers.on("connection", (socket) => {
             const rideId = typeof cancelPayload === "string"
                 ? cancelPayload
                 : cancelPayload?.rideId;
+            const reason = typeof cancelPayload === "string"
+                ? undefined
+                : cancelPayload?.reason;
             if (!rideId)
                 return;
             const updated = await updateRideState(rideId, RideState.CANCELADO);
             const payload = {
                 rideId,
                 newState: updated.state,
+                reason,
             };
             passengers.to(`ride:${rideId}`).emit("ride:status_changed", payload);
             drivers.emit("ride:status_changed", payload);
