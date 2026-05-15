@@ -25,9 +25,17 @@ const readFileAsDataUrl = (file: File) =>
   });
 
 const validateFacePhoto = async (file: File) => {
+  if (!file.type.startsWith("image/")) {
+    throw new Error("invalid_image_type");
+  }
+
+  if (file.size > 4 * 1024 * 1024) {
+    throw new Error("image_too_large");
+  }
+
   const FaceDetectorCtor = (window as any).FaceDetector;
   if (!FaceDetectorCtor) {
-    throw new Error("face_detector_unavailable");
+    return;
   }
 
   const bitmap = await createImageBitmap(file);
@@ -943,10 +951,13 @@ export default function RiderPage() {
       const dataUrl = await readFileAsDataUrl(file);
       setProfilePhotoUrl(dataUrl);
     } catch (err) {
+      const code = err instanceof Error ? err.message : "";
       const message =
-        err instanceof Error && err.message === "face_detector_unavailable"
-          ? "Este navegador no permite validar rostro. Usa un navegador compatible para cargar foto tipo carnet."
-          : "La foto debe mostrar exactamente un rostro visible tipo carnet.";
+        code === "invalid_image_type"
+          ? "Selecciona un archivo de imagen."
+          : code === "image_too_large"
+            ? "La imagen no debe superar 4 MB."
+            : "La foto debe mostrar exactamente un rostro visible tipo carnet.";
       setPhotoError(message);
       event.target.value = "";
     }
