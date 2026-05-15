@@ -153,6 +153,7 @@ export default function RiderPage() {
   const [driverLocation, setDriverLocation] = useState<[number, number]>([
     -57.6, -25.3,
   ]);
+  const driverLocationRef = useRef<[number, number]>([-57.6, -25.3]);
   const [activeRide, setActiveRide] = useState<RideRequest | null>(null);
   const [routeGeometry, setRouteGeometry] = useState<[number, number][] | null>(
     null,
@@ -172,6 +173,7 @@ export default function RiderPage() {
 
   const activeRideIdRef = useRef<string | null>(null);
   const activeRideRef = useRef<RideRequest | null>(null);
+  const lastPendingRefreshRef = useRef(0);
   const router = useRouter();
 
   const syncProfileForm = (profile: User) => {
@@ -271,74 +273,22 @@ export default function RiderPage() {
         }) => {
           console.log("Nueva solicitud recibida:", r);
           setRequests((prev: RideRequest[]) => {
-            if (getPassedRideIds().has(r.rideId)) return prev;
+            const request: RideRequest = {
+              id: r.rideId,
+              origin: r.origin as GeoPoint,
+              destination: r.destination ?? (r.origin as GeoPoint),
+              estimatedFare: r.estimatedFare ?? 0,
+              state: "PENDIENTE",
+              passengerId: r.passengerId,
+              passengerName: r.passengerName,
+              originName: r.originName,
+              destName: r.destName,
+            };
 
-            if (
-              !r.origin ||
-              typeof r.origin.lat !== "number" ||
-              typeof r.origin.lng !== "number"
-            ) {
-              return prev;
-            }
-            const ride = activeRideRef.current;
-            if (ride?.state === "ASIGNADO") return prev;
+            if (!canShowRideRequest(request)) return prev;
+            if (prev.some((x) => x.id === request.id)) return prev;
 
-            if (ride?.state === "EN_CURSO" && ride.destination?.lat && ride.destination?.lng) {
-              const distanceToCurrentDestination = distanceKm(
-                driverLocation[1],
-                driverLocation[0],
-                ride.destination.lat,
-                ride.destination.lng,
-              );
-
-              if (
-                distanceToCurrentDestination === null ||
-                distanceToCurrentDestination > NEAR_DESTINATION_THRESHOLD_KM
-              ) {
-                return prev;
-              }
-            }
-
-            const distanceToNewOrigin = distanceKm(
-              driverLocation[1],
-              driverLocation[0],
-              r.origin.lat,
-              r.origin.lng,
-            );
-
-            if (
-              distanceToNewOrigin === null ||
-              distanceToNewOrigin > NEARBY_REQUEST_RADIUS_KM
-            ) {
-              return prev;
-            }
-
-            if (ride?.destination?.lat && ride?.destination?.lng) {
-              const distanceFromDestination = distanceKm(
-                ride.destination.lat,
-                ride.destination.lng,
-                r.origin?.lat,
-                r.origin?.lng,
-              );
-              if (distanceFromDestination === null || distanceFromDestination > NEARBY_REQUEST_RADIUS_KM) return prev;
-            }
-            // Evitar duplicados
-            if (prev.some((x) => x.id === r.rideId)) return prev;
-
-            return [
-              {
-                id: r.rideId,
-                origin: r.origin,
-                destination: r.destination ?? r.origin,
-                estimatedFare: r.estimatedFare ?? 0,
-                state: "PENDIENTE",
-                passengerId: r.passengerId,
-                passengerName: r.passengerName,
-                originName: r.originName,
-                destName: r.destName,
-              },
-              ...prev,
-            ];
+            return [request, ...prev];
           });
           setDebugStatus(`received request ${r.rideId}`);
         },
@@ -512,10 +462,7 @@ export default function RiderPage() {
 
       // fetch pendientes existentes y perfil actualizado
       try {
-        const [ridesRes, meRes] = await Promise.all([
-          fetch(`${API_URL}/rides?state=PENDIENTE`, {
-            headers: { Authorization: `Bearer ${token}` },
-          }),
+        const [meRes] = await Promise.all([
           fetch(`${API_URL}/me`, {
             headers: { Authorization: `Bearer ${token}` },
           }),
@@ -542,50 +489,7 @@ export default function RiderPage() {
           }
         }
 
-        if (ridesRes.ok) {
-          const rides = await ridesRes.json();
-          const passedRideIds = getPassedRideIds();
-          // Reemplazar completamente en lugar de agregar para evitar duplicados
-          const mapped: RideRequest[] = rides.map(
-            (r: {
-              id: string;
-              originLat: number;
-              originLng: number;
-              destLat: number;
-              destLng: number;
-              estimatedFare: number;
-              state: RideState;
-              passengerId: string;
-              passenger?: { name: string };
-            }) => ({
-              id: r.id,
-              origin: { lat: r.originLat, lng: r.originLng },
-              destination: { lat: r.destLat, lng: r.destLng },
-              estimatedFare: r.estimatedFare,
-              state: r.state,
-              passengerId: r.passengerId,
-              passengerName: r.passenger?.name || "Pasajero",
-            }),
-          ).filter((ride: RideRequest) => !passedRideIds.has(ride.id));
-          setRequests(filterRequestsByActiveRide(mapped));
-          // Reverse-geocode names for DB-loaded rides
-          mapped.forEach(async (req) => {
-            try {
-              const [oRes, dRes] = await Promise.all([
-                fetch(`${API_URL}/reverse-geocode?lat=${req.origin.lat}&lng=${req.origin.lng}`, { headers: { Authorization: `Bearer ${token}` } }),
-                fetch(`${API_URL}/reverse-geocode?lat=${req.destination.lat}&lng=${req.destination.lng}`, { headers: { Authorization: `Bearer ${token}` } }),
-              ]);
-              const [oData, dData] = await Promise.all([oRes.json(), dRes.json()]);
-              setRequests((prev) =>
-                prev.map((r2) =>
-                  r2.id === req.id
-                    ? { ...r2, originName: oData.display_name || oData.text, destName: dData.display_name || dData.text }
-                    : r2,
-                ),
-              );
-            } catch {}
-          });
-        }
+        await refreshPendingRequests(token);
 
         // Fetch active rides (ASIGNADO or EN_CURSO) to restore on page reload
         try {
@@ -646,6 +550,11 @@ export default function RiderPage() {
   }, [activeRide]);
 
   useEffect(() => {
+    driverLocationRef.current = driverLocation;
+    setRequests((prev) => prev.filter(canShowRideRequest));
+  }, [driverLocation]);
+
+  useEffect(() => {
     if (!activeRide) return;
     if (routeGeometry && routeGeometry.length > 0) return;
 
@@ -694,11 +603,21 @@ export default function RiderPage() {
           pos.coords.longitude,
           pos.coords.latitude,
         ];
+        driverLocationRef.current = loc;
         setDriverLocation(loc);
         socketRef.current?.emit("driver:location", {
           lng: loc[0],
           lat: loc[1],
         });
+
+        const token = localStorage.getItem("movi:token");
+        const now = Date.now();
+        if (token && now - lastPendingRefreshRef.current > 15000) {
+          lastPendingRefreshRef.current = now;
+          refreshPendingRequests(token).catch((err) =>
+            console.warn("Error refreshing pending rides:", err),
+          );
+        }
       },
       (err) => {
         console.warn("Driver geolocation error:", err);
@@ -826,6 +745,124 @@ export default function RiderPage() {
         req.origin?.lng,
       );
       return distance !== null && distance <= 1;
+    });
+  };
+
+  const canShowRideRequest = (req: RideRequest) => {
+    if (getPassedRideIds().has(req.id)) return false;
+
+    if (
+      !req.origin ||
+      typeof req.origin.lat !== "number" ||
+      typeof req.origin.lng !== "number"
+    ) {
+      return false;
+    }
+
+    const ride = activeRideRef.current;
+    if (ride?.state === "ASIGNADO") return false;
+
+    const currentLocation = driverLocationRef.current;
+
+    if (ride?.state === "EN_CURSO" && ride.destination?.lat && ride.destination?.lng) {
+      const distanceToCurrentDestination = distanceKm(
+        currentLocation[1],
+        currentLocation[0],
+        ride.destination.lat,
+        ride.destination.lng,
+      );
+
+      if (
+        distanceToCurrentDestination === null ||
+        distanceToCurrentDestination > NEAR_DESTINATION_THRESHOLD_KM
+      ) {
+        return false;
+      }
+    }
+
+    const distanceToNewOrigin = distanceKm(
+      currentLocation[1],
+      currentLocation[0],
+      req.origin.lat,
+      req.origin.lng,
+    );
+
+    if (
+      distanceToNewOrigin === null ||
+      distanceToNewOrigin > NEARBY_REQUEST_RADIUS_KM
+    ) {
+      return false;
+    }
+
+    if (ride?.destination?.lat && ride?.destination?.lng) {
+      const distanceFromDestination = distanceKm(
+        ride.destination.lat,
+        ride.destination.lng,
+        req.origin.lat,
+        req.origin.lng,
+      );
+      if (
+        distanceFromDestination === null ||
+        distanceFromDestination > NEARBY_REQUEST_RADIUS_KM
+      ) {
+        return false;
+      }
+    }
+
+    return true;
+  };
+
+  const mapRideToRequest = (r: {
+    id: string;
+    originLat: number;
+    originLng: number;
+    destLat: number;
+    destLng: number;
+    estimatedFare: number;
+    state: RideState;
+    passengerId: string;
+    passenger?: { name: string };
+  }): RideRequest => ({
+    id: r.id,
+    origin: { lat: r.originLat, lng: r.originLng },
+    destination: { lat: r.destLat, lng: r.destLng },
+    estimatedFare: r.estimatedFare,
+    state: r.state,
+    passengerId: r.passengerId,
+    passengerName: r.passenger?.name || "Pasajero",
+  });
+
+  const refreshPendingRequests = async (token: string) => {
+    const ridesRes = await fetch(`${API_URL}/rides?state=PENDIENTE`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!ridesRes.ok) return;
+
+    const rides = await ridesRes.json();
+    if (!Array.isArray(rides)) return;
+
+    const mapped = rides.map(mapRideToRequest).filter(canShowRideRequest);
+    setRequests((prev) => {
+      const existing = new Set(prev.map((ride) => ride.id));
+      const incoming = mapped.filter((ride) => !existing.has(ride.id));
+      return [...incoming, ...prev.filter(canShowRideRequest)];
+    });
+
+    mapped.forEach(async (req) => {
+      try {
+        const [oRes, dRes] = await Promise.all([
+          fetch(`${API_URL}/reverse-geocode?lat=${req.origin.lat}&lng=${req.origin.lng}`, { headers: { Authorization: `Bearer ${token}` } }),
+          fetch(`${API_URL}/reverse-geocode?lat=${req.destination.lat}&lng=${req.destination.lng}`, { headers: { Authorization: `Bearer ${token}` } }),
+        ]);
+        const [oData, dData] = await Promise.all([oRes.json(), dRes.json()]);
+        setRequests((prev) =>
+          prev.map((r2) =>
+            r2.id === req.id
+              ? { ...r2, originName: oData.display_name || oData.text, destName: dData.display_name || dData.text }
+              : r2,
+          ),
+        );
+      } catch {}
     });
   };
 
