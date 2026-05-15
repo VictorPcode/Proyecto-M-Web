@@ -12,6 +12,7 @@ model User {
   name       String
   email      String    @unique
   phone      String?
+  photoUrl   String?
   password   String
   role       UserRole
   approved   Boolean   @default(false)    // admin approval required for drivers
@@ -38,6 +39,7 @@ model User {
   driverRides    Ride[] @relation("DriverRides")
   vehicles       Vehicle[]
   notifications  Notification[]
+  driverSessions DriverSession[]
 }
 
 enum UserRole {
@@ -89,9 +91,36 @@ model Ride {
   destLng       Float
   estimatedFare Float
   finalFare     Float?
+  adminFee      Float?
+  driverEarnings Float?
   state         RideState
+  acceptedAt    DateTime?
+  startedAt     DateTime?
+  completedAt   DateTime?
+  cancelledAt   DateTime?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
+}
+
+model DriverSession {
+  id        String              @id @default(cuid())
+  driver   User                @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  driverId String
+  status    DriverSessionStatus @default(ACTIVE)
+  startedAt DateTime            @default(now())
+  endedAt   DateTime?
+  restUntil DateTime?
+  createdAt DateTime            @default(now())
+  updatedAt DateTime            @updatedAt
+
+  @@index([driverId, status])
+  @@index([driverId, restUntil])
+}
+
+enum DriverSessionStatus {
+  ACTIVE
+  COMPLETED
+  RESTING
 }
 
 enum RideState {

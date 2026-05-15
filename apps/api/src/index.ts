@@ -236,6 +236,7 @@ app.post(
         password,
         role,
         phone,
+        photoUrl,
         licenseType,
         licenseNumber,
         placa,
@@ -280,6 +281,7 @@ app.post(
             name,
             email,
             phone,
+            photoUrl,
             licenseType,
             licenseNumber,
           },
@@ -336,6 +338,7 @@ app.post(
               password: hashed,
               role: role ?? "PASSENGER",
               phone,
+              photoUrl,
               licenseType,
               licenseNumber,
               approved: role === "ADMIN",
@@ -441,8 +444,9 @@ app.get("/me/rides", authMiddleware, async (req, res) => {
 
     const result = rides.map((ride) => {
       const paidFare = ride.finalFare ?? ride.estimatedFare ?? 0;
-      const adminFee = Math.round(paidFare * 0.05);
-      const driverEarnings = Math.max(paidFare - adminFee, 0);
+      const adminFee = ride.adminFee ?? Math.round(paidFare * 0.05);
+      const driverEarnings =
+        ride.driverEarnings ?? Math.max(paidFare - adminFee, 0);
 
       return {
         ...ride,
@@ -737,6 +741,8 @@ const io = new Server(httpServer, {
 
 const drivers = io.of("/drivers");
 const passengers = io.of("/passengers");
+const DRIVER_SESSION_LIMIT_MS = 12 * 60 * 60 * 1000;
+const DRIVER_REST_MS = 6 * 60 * 60 * 1000;
 
 function socketAuth(namespace: ReturnType<typeof io.of>) {
   namespace.use((socket, next) => {
@@ -827,6 +833,82 @@ async function canUserAccessRide(
   return true;
 }
 
+async function ensureDriverCanWork(driverId: string) {
+  const now = new Date();
+
+  const restingSession = await prisma.driverSession.findFirst({
+    where: {
+      driverId,
+      status: "RESTING",
+      restUntil: { gt: now },
+    },
+    orderBy: { restUntil: "desc" },
+  });
+
+  if (restingSession?.restUntil) {
+    return {
+      ok: false,
+      reason: "driver_must_rest",
+      restUntil: restingSession.restUntil,
+    };
+  }
+
+  const activeSession = await prisma.driverSession.findFirst({
+    where: { driverId, status: "ACTIVE" },
+    orderBy: { startedAt: "desc" },
+  });
+
+  if (!activeSession) {
+    await prisma.driverSession.create({
+      data: { driverId, status: "ACTIVE" },
+    });
+    return { ok: true };
+  }
+
+  const elapsed = now.getTime() - activeSession.startedAt.getTime();
+  if (elapsed <= DRIVER_SESSION_LIMIT_MS) {
+    return { ok: true };
+  }
+
+  const restUntil = new Date(now.getTime() + DRIVER_REST_MS);
+  await prisma.driverSession.update({
+    where: { id: activeSession.id },
+    data: {
+      status: "RESTING",
+      endedAt: now,
+      restUntil,
+    },
+  });
+
+  return {
+    ok: false,
+    reason: "driver_session_limit_reached",
+    restUntil,
+  };
+}
+
+async function finishExpiredDriverSession(driverId: string) {
+  const activeSession = await prisma.driverSession.findFirst({
+    where: { driverId, status: "ACTIVE" },
+    orderBy: { startedAt: "desc" },
+  });
+
+  if (!activeSession) return;
+
+  const now = new Date();
+  const elapsed = now.getTime() - activeSession.startedAt.getTime();
+  if (elapsed < DRIVER_SESSION_LIMIT_MS) return;
+
+  await prisma.driverSession.update({
+    where: { id: activeSession.id },
+    data: {
+      status: "RESTING",
+      endedAt: now,
+      restUntil: new Date(now.getTime() + DRIVER_REST_MS),
+    },
+  });
+}
+
 drivers.on("connection", (socket) => {
   console.log("Driver connected:", socket.id);
 
@@ -911,10 +993,49 @@ drivers.on("connection", (socket) => {
       };
     }) => {
       try {
-        const ride = await prisma.ride.findUnique({
-          where: { id: data.rideId },
+        if (!data.driverId) {
+          socket.emit("driver:accept_failed", {
+            rideId: data.rideId,
+            reason: "missing_driver",
+          });
+          return;
+        }
+
+        const workStatus = await ensureDriverCanWork(data.driverId);
+        if (!workStatus.ok) {
+          socket.emit("driver:accept_failed", {
+            rideId: data.rideId,
+            reason: workStatus.reason,
+            restUntil: workStatus.restUntil,
+          });
+          return;
+        }
+
+        const claim = await prisma.ride.updateMany({
+          where: {
+            id: data.rideId,
+            state: RideState.PENDIENTE,
+            driverId: null,
+          },
+          data: {
+            state: RideState.ASIGNADO,
+            driverId: data.driverId,
+            acceptedAt: new Date(),
+          },
         });
-        if (!ride || ride.state !== RideState.PENDIENTE) return;
+
+        if (claim.count !== 1) {
+          socket.emit("driver:accept_failed", {
+            rideId: data.rideId,
+            reason: "ride_already_taken",
+          });
+
+          drivers.emit("ride:status_changed", {
+            rideId: data.rideId,
+            newState: RideState.ASIGNADO,
+          });
+          return;
+        }
 
         if (data.vehicleId) {
           await prisma.vehicle.upsert({
@@ -941,10 +1062,6 @@ drivers.on("connection", (socket) => {
         const updated = await prisma.ride.update({
           where: { id: data.rideId },
           data: {
-            state: RideState.ASIGNADO,
-            driver: data.driverId
-              ? { connect: { id: data.driverId } }
-              : undefined,
             vehicle: data.vehicleId
               ? { connect: { id: data.vehicleId } }
               : undefined,
@@ -957,6 +1074,7 @@ drivers.on("connection", (socket) => {
         });
 
         socket.join(`ride:${updated.id}`);
+        socket.emit("driver:accept_ok", updated);
 
         passengers
           .to(`passenger:${updated.passengerId}`)
@@ -978,7 +1096,37 @@ drivers.on("connection", (socket) => {
 
   socket.on("driver:start_ride", async (rideId: string) => {
     try {
-      const updated = await updateRideState(rideId, RideState.EN_CURSO);
+      const driverId = socket.data.userId;
+      if (!driverId) return;
+
+      const workStatus = await ensureDriverCanWork(driverId);
+      if (!workStatus.ok) {
+        socket.emit("driver:start_failed", {
+          rideId,
+          reason: workStatus.reason,
+          restUntil: workStatus.restUntil,
+        });
+        return;
+      }
+
+      const ride = await prisma.ride.findUnique({
+        where: { id: rideId },
+        select: { id: true, driverId: true, state: true },
+      });
+
+      if (!ride || ride.driverId !== driverId || ride.state !== RideState.ASIGNADO) {
+        socket.emit("driver:start_failed", {
+          rideId,
+          reason: "ride_not_assigned_to_driver",
+        });
+        return;
+      }
+
+      const updated = await prisma.ride.update({
+        where: { id: rideId },
+        data: { state: RideState.EN_CURSO, startedAt: new Date() },
+        include: { passenger: true, driver: true, vehicle: true },
+      });
       passengers.emit("ride:status_changed", {
         rideId,
         newState: updated.state,
@@ -998,6 +1146,7 @@ drivers.on("connection", (socket) => {
       data: string | { rideId: string; finalFare?: number; state?: RideState },
     ) => {
       try {
+        const driverId = socket.data.userId;
         const rideId = typeof data === "string" ? data : data.rideId;
         const finalFare =
           typeof data === "object" ? data.finalFare : undefined;
@@ -1007,10 +1156,35 @@ drivers.on("connection", (socket) => {
           ? RideState.CANCELADO
           : RideState.FINALIZADO;
 
+        const ride = await prisma.ride.findUnique({
+          where: { id: rideId },
+          select: { id: true, driverId: true, state: true },
+        });
+
+        if (!ride || ride.driverId !== driverId) {
+          socket.emit("driver:end_failed", {
+            rideId,
+            reason: "ride_not_assigned_to_driver",
+          });
+          return;
+        }
+
+        if (ride.state !== RideState.EN_CURSO && !isCancelled) {
+          socket.emit("driver:end_failed", {
+            rideId,
+            reason: "ride_not_in_progress",
+          });
+          return;
+        }
+
         const updateData: any = { state: newState };
         if (finalFare !== undefined && finalFare !== null) {
           updateData.finalFare = finalFare;
+          updateData.adminFee = Math.round(finalFare * 0.05);
+          updateData.driverEarnings = Math.max(finalFare - updateData.adminFee, 0);
         }
+        if (newState === RideState.FINALIZADO) updateData.completedAt = new Date();
+        if (newState === RideState.CANCELADO) updateData.cancelledAt = new Date();
 
         const updated = await prisma.ride.update({
           where: { id: rideId },
@@ -1033,6 +1207,9 @@ drivers.on("connection", (socket) => {
   );
 
   socket.on("driver:confirm_payment", async (data: { rideId: string }) => {
+    if (socket.data.userId) {
+      await finishExpiredDriverSession(socket.data.userId);
+    }
     passengers.emit("ride:payment_confirmed", { rideId: data.rideId });
     drivers.emit("ride:payment_confirmed", { rideId: data.rideId });
   });

@@ -124,6 +124,7 @@ export default function RiderPage() {
   const [showManualInputModal, setShowManualInputModal] = useState(false);
   const [manualInputAmount, setManualInputAmount] = useState("0");
   const [pendingFare, setPendingFare] = useState<number>(0);
+  const [acceptingRideId, setAcceptingRideId] = useState<string | null>(null);
 
   const [approvalError, setApprovalError] = useState(false);
   const [geoWarning, setGeoWarning] = useState<string | null>(null);
@@ -294,6 +295,10 @@ export default function RiderPage() {
       socket.on(
         "ride:status_changed",
         (s: { rideId: string; newState: RideState }) => {
+          setAcceptingRideId((current) =>
+            current === s.rideId ? null : current,
+          );
+
           if (s.newState === "CANCELADO" || s.newState === "FINALIZADO") {
             setRequests((prev) => prev.filter((x) => x.id !== s.rideId));
             setActiveRide((prev) => {
@@ -324,6 +329,124 @@ export default function RiderPage() {
           }
         },
       );
+
+      socket.on(
+        "driver:accept_ok",
+        (ride: {
+          id: string;
+          originLat: number;
+          originLng: number;
+          destLat: number;
+          destLng: number;
+          estimatedFare: number;
+          state: RideState;
+          passengerId: string;
+          passenger?: { name?: string };
+        }) => {
+          setAcceptingRideId(null);
+          setRequests((prev) => {
+            const pending = prev.find((req) => req.id === ride.id);
+            const active: RideRequest = {
+              id: ride.id,
+              origin: pending?.origin ?? {
+                lat: ride.originLat,
+                lng: ride.originLng,
+              },
+              destination: pending?.destination ?? {
+                lat: ride.destLat,
+                lng: ride.destLng,
+              },
+              estimatedFare: ride.estimatedFare,
+              state: ride.state,
+              passengerId: ride.passengerId,
+              passengerName: pending?.passengerName || ride.passenger?.name,
+              originName: pending?.originName,
+              destName: pending?.destName,
+            };
+
+            setActiveRide(active);
+            setChatMessages([]);
+            setChatOpen(false);
+
+            if (active.origin) {
+              fetchDirections(driverLocation, [
+                active.origin.lng,
+                active.origin.lat,
+              ]);
+            }
+
+            return prev.filter((req) => req.id !== ride.id);
+          });
+        },
+      );
+
+      socket.on(
+        "driver:accept_failed",
+        (payload: { rideId: string; reason?: string; restUntil?: string }) => {
+          setAcceptingRideId((current) =>
+            current === payload.rideId ? null : current,
+          );
+          setRequests((prev) =>
+            prev.filter((req) => req.id !== payload.rideId),
+          );
+
+          if (payload.reason === "driver_must_rest" && payload.restUntil) {
+            alert(
+              `Debes descansar hasta ${new Date(payload.restUntil).toLocaleString("es-PY")}.`,
+            );
+            return;
+          }
+
+          if (payload.reason === "driver_session_limit_reached" && payload.restUntil) {
+            alert(
+              `Alcanzaste el limite de 12 horas. Debes descansar hasta ${new Date(payload.restUntil).toLocaleString("es-PY")}.`,
+            );
+            return;
+          }
+
+          if (payload.reason === "ride_already_taken") {
+            alert("Este viaje ya fue aceptado por otro conductor.");
+          }
+        },
+      );
+
+      const clearRejectedActiveRide = (payload: {
+        rideId: string;
+        reason?: string;
+        restUntil?: string;
+      }) => {
+        if (
+          payload.reason === "ride_not_assigned_to_driver" ||
+          payload.reason === "ride_already_taken"
+        ) {
+          setActiveRide((prev) => {
+            if (!prev || prev.id !== payload.rideId) return prev;
+            activeRideIdRef.current = null;
+            setRouteGeometry(null);
+            setChatMessages([]);
+            setChatOpen(false);
+            setShowPaymentModal(false);
+            setShowManualInputModal(false);
+            setPendingFare(0);
+            localStorage.removeItem(RIDER_RIDE_SNAPSHOT_KEY);
+            return null;
+          });
+          setRequests((prev) =>
+            prev.filter((req) => req.id !== payload.rideId),
+          );
+          alert("Este viaje ya no esta disponible para este conductor.");
+          return;
+        }
+
+        if (payload.restUntil) {
+          alert(
+            `No puedes tomar viajes hasta ${new Date(payload.restUntil).toLocaleString("es-PY")}.`,
+          );
+        }
+      };
+
+      socket.on("driver:start_failed", clearRejectedActiveRide);
+      socket.on("driver:end_failed", clearRejectedActiveRide);
 
       socket.on("ride:chat_message", (msg: ChatMessage) => {
         if (!msg?.rideId || msg.rideId !== activeRideIdRef.current) return;
@@ -681,6 +804,8 @@ export default function RiderPage() {
   };
 
   const accept = (ride: RideRequest) => {
+    if (acceptingRideId) return;
+
     const driverId = user?.id || "demo-driver";
     // Priorizamos el vehiculo real de la BD si existe
     const realVehicle = user?.vehicle;
@@ -702,14 +827,7 @@ export default function RiderPage() {
       vehicleId,
       vehicle,
     });
-    setActiveRide({ ...ride, state: "ASIGNADO" });
-    setChatMessages([]);
-    setChatOpen(false);
-    setRequests((prev) => prev.filter((r) => r.id !== ride.id));
-    if (ride?.origin) {
-      // Al aceptar, mostramos ruta hacia el pasajero
-      fetchDirections(driverLocation, [ride.origin.lng, ride.origin.lat]);
-    }
+    setAcceptingRideId(ride.id);
   };
 
   const startRide = () => {
@@ -1370,23 +1488,25 @@ export default function RiderPage() {
               <div style={{ display: "flex", gap: 8 }}>
                 <button
                   onClick={() => accept(req)}
+                  disabled={!!acceptingRideId}
                   style={{
                     flex: 1,
-                    background: "#34C759",
+                    background: acceptingRideId ? "#8e8e93" : "#34C759",
                     color: "white",
                     padding: "12px 20px",
                     borderRadius: "10px",
                     fontSize: 14,
                     fontWeight: 600,
                     border: "none",
-                    cursor: "pointer",
+                    cursor: acceptingRideId ? "not-allowed" : "pointer",
                     boxShadow: "0 2px 8px rgba(52, 199, 89, 0.3)",
                   }}
                 >
-                  Aceptar
+                  {acceptingRideId === req.id ? "Aceptando..." : "Aceptar"}
                 </button>
                 <button
                   onClick={() => pass(req)}
+                  disabled={!!acceptingRideId}
                   style={{
                     flex: 1,
                     background: "#f5f5f7",
@@ -1396,7 +1516,7 @@ export default function RiderPage() {
                     fontSize: 14,
                     fontWeight: 500,
                     border: "none",
-                    cursor: "pointer",
+                    cursor: acceptingRideId ? "not-allowed" : "pointer",
                   }}
                 >
                   Pasar
