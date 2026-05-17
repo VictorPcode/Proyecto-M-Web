@@ -27,7 +27,29 @@ type DriverData = {
   docCedulaFront?: string;
   docCedulaBack?: string;
   docJudicialCert?: string;
+  driverBlocked?: boolean;
+  driverBlockedReason?: string | null;
+  commissionDebt?: number;
+  delinquencyCount?: number;
+  suspendedUntil?: string | null;
+  operationalSummary?: {
+    todayCommission: number;
+    todayEarnings: number;
+    totalPendingCommission: number;
+    overdueCommission: number;
+    blocked: boolean;
+    blockedReason?: string | null;
+    suspendedUntil?: string | null;
+    delinquencyCount: number;
+  };
 };
+
+const formatGuarani = (value: number) =>
+  new Intl.NumberFormat("es-PY", {
+    style: "currency",
+    currency: "PYG",
+    maximumFractionDigits: 0,
+  }).format(value);
 
 function DocViewer({ title, docB64 }: { title: string; docB64?: string }) {
   const [open, setOpen] = React.useState(false);
@@ -108,6 +130,8 @@ function DocViewer({ title, docB64 }: { title: string; docB64?: string }) {
 export default function AdminPage() {
   const [drivers, setDrivers] = useState<DriverData[]>([]);
   const [loading, setLoading] = useState(false);
+  const [operationalDrivers, setOperationalDrivers] = useState<DriverData[]>([]);
+  const [blockedDrivers, setBlockedDrivers] = useState<DriverData[]>([]);
   const [selectedDriver, setSelectedDriver] = useState<DriverData | null>(null);
   const [showRejectModal, setShowRejectModal] = useState(false);
   const [rejectReason, setRejectReason] = useState("");
@@ -130,12 +154,22 @@ export default function AdminPage() {
     async function fetchDrivers() {
       setLoading(true);
       try {
-        const res = await fetch(`${API_URL}/users?role=DRIVER&documentStatus=PENDING`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
+        const [res, opsRes] = await Promise.all([
+          fetch(`${API_URL}/users?role=DRIVER&documentStatus=PENDING`, {
+            headers: { Authorization: `Bearer ${token}` },
+          }),
+          fetch(`${API_URL}/admin/drivers/operations`, {
+            headers: { Authorization: `Bearer ${token}` },
+          }),
+        ]);
         if (res.ok) {
           const data = await res.json();
           setDrivers(data);
+        }
+        if (opsRes.ok) {
+          const data = await opsRes.json();
+          setOperationalDrivers(data.drivers || []);
+          setBlockedDrivers(data.blockedDrivers || []);
         }
       } catch (e) {
         console.error(e);
@@ -146,6 +180,46 @@ export default function AdminPage() {
 
     fetchDrivers();
   }, [router]);
+
+  const refreshOperations = async () => {
+    const token = localStorage.getItem("movi:token") || "";
+    const res = await fetch(`${API_URL}/admin/drivers/operations`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) return;
+    const data = await res.json();
+    setOperationalDrivers(data.drivers || []);
+    setBlockedDrivers(data.blockedDrivers || []);
+  };
+
+  const releaseCommission = async (driver: DriverData) => {
+    if (driver.suspendedUntil && new Date(driver.suspendedUntil).getTime() > Date.now()) {
+      alert("Este conductor esta suspendido por 5 dias y no puede habilitarse desde administracion.");
+      return;
+    }
+
+    const receiptNumber = window.prompt(`Numero de comprobante para liberar a ${driver.name}`);
+    if (!receiptNumber?.trim()) return;
+
+    const token = localStorage.getItem("movi:token") || "";
+    const res = await fetch(`${API_URL}/admin/drivers/${driver.id}/release-commission`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ receiptNumber }),
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      alert("Error: " + (err.error || res.statusText));
+      return;
+    }
+
+    await refreshOperations();
+    alert("Comprobante registrado y conductor gestionado.");
+  };
 
   const approve = async (id: string) => {
     const token = localStorage.getItem("movi:token") || "";
@@ -247,6 +321,95 @@ export default function AdminPage() {
 
       {/* Main: detalles del conductor */}
       <div style={{ flex: 1, overflowY: 'auto', padding: '40px' }}>
+        {!selectedDriver && (
+          <div style={{ display: 'grid', gap: 24, marginBottom: 32 }}>
+            <section style={{ background: 'white', borderRadius: 12, padding: 20 }}>
+              <h2 style={{ margin: '0 0 14px', fontSize: 18 }}>Conductores registrados</h2>
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                  <thead>
+                    <tr style={{ textAlign: 'left', borderBottom: '1px solid #eee' }}>
+                      <th style={{ padding: 8 }}>Conductor</th>
+                      <th style={{ padding: 8 }}>Estado</th>
+                      <th style={{ padding: 8 }}>Comision hoy</th>
+                      <th style={{ padding: 8 }}>Pendiente</th>
+                      <th style={{ padding: 8 }}>Morosidades</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {operationalDrivers.map((driver) => (
+                      <tr key={driver.id} style={{ borderBottom: '1px solid #f2f2f2' }}>
+                        <td style={{ padding: 8 }}>
+                          <strong>{driver.name}</strong>
+                          <div style={{ color: '#666', fontSize: 12 }}>{driver.email}</div>
+                        </td>
+                        <td style={{ padding: 8 }}>
+                          {driver.operationalSummary?.blocked ? 'Bloqueado' : driver.approved ? 'Habilitado' : 'Pendiente'}
+                        </td>
+                        <td style={{ padding: 8 }}>{formatGuarani(driver.operationalSummary?.todayCommission || 0)}</td>
+                        <td style={{ padding: 8 }}>{formatGuarani(driver.operationalSummary?.totalPendingCommission || 0)}</td>
+                        <td style={{ padding: 8 }}>{driver.delinquencyCount || 0}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+
+            <section style={{ background: 'white', borderRadius: 12, padding: 20 }}>
+              <h2 style={{ margin: '0 0 14px', fontSize: 18 }}>Conductores morosos o bloqueados</h2>
+              {blockedDrivers.length === 0 ? (
+                <div style={{ color: '#666', fontSize: 14 }}>No hay conductores bloqueados por comisiones.</div>
+              ) : (
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                    <thead>
+                      <tr style={{ textAlign: 'left', borderBottom: '1px solid #eee' }}>
+                        <th style={{ padding: 8 }}>Conductor</th>
+                        <th style={{ padding: 8 }}>Monto a depositar</th>
+                        <th style={{ padding: 8 }}>Morosidades</th>
+                        <th style={{ padding: 8 }}>Estado</th>
+                        <th style={{ padding: 8 }}>Liberar</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {blockedDrivers.map((driver) => {
+                        const suspended = !!driver.suspendedUntil && new Date(driver.suspendedUntil).getTime() > Date.now();
+                        return (
+                          <tr key={driver.id} style={{ borderBottom: '1px solid #f2f2f2' }}>
+                            <td style={{ padding: 8 }}>
+                              <strong>{driver.name}</strong>
+                              <div style={{ color: '#666', fontSize: 12 }}>{driver.email}</div>
+                            </td>
+                            <td style={{ padding: 8 }}>{formatGuarani(driver.operationalSummary?.overdueCommission || driver.commissionDebt || 0)}</td>
+                            <td style={{ padding: 8 }}>{driver.delinquencyCount || 0}</td>
+                            <td style={{ padding: 8 }}>
+                              {suspended
+                                ? `Suspendido hasta ${new Date(driver.suspendedUntil || '').toLocaleDateString('es-PY')}`
+                                : 'Pendiente de deposito'}
+                            </td>
+                            <td style={{ padding: 8 }}>
+                              <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, opacity: suspended ? 0.5 : 1 }}>
+                                <input
+                                  type="checkbox"
+                                  disabled={suspended}
+                                  checked={false}
+                                  onChange={() => releaseCommission(driver)}
+                                />
+                                Verificado
+                              </label>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </section>
+          </div>
+        )}
+
         {selectedDriver ? (
           <div>
             <h1 style={{ margin: 0, fontSize: 28, marginBottom: 20 }}>{selectedDriver.name}</h1>

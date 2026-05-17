@@ -13,8 +13,21 @@ interface Ride {
   destLng: number;
   estimatedFare: number;
   finalFare?: number;
+  officialFare?: number;
+  collectedFare?: number;
+  adminFee?: number;
+  driverEarnings?: number;
+  underchargeAmount?: number;
+  distanceKm?: number;
   createdAt: string;
 }
+
+const formatGuarani = (value: number) =>
+  new Intl.NumberFormat("es-PY", {
+    style: "currency",
+    currency: "PYG",
+    maximumFractionDigits: 0,
+  }).format(value);
 
 export default function MisViajes() {
   const [rides, setRides] = useState<Ride[]>([]);
@@ -131,6 +144,9 @@ function RideCard({ ride }: { ride: Ride }) {
           <div style={{ fontSize: "13px", color: "#999" }}>
             {date}
           </div>
+          <div style={{ fontSize: "14px", fontWeight: 700, marginTop: 4 }}>
+            {ride.passengerName || "Pasajero"}
+          </div>
         </div>
         <span style={{
           fontSize: "11px",
@@ -144,18 +160,29 @@ function RideCard({ ride }: { ride: Ride }) {
         </span>
       </div>
       <div style={{
-        display: "flex",
-        justifyContent: "space-between",
-        alignItems: "center",
+        display: "grid",
+        gap: "6px",
+        fontSize: "13px",
+        color: "#555",
       }}>
-        <div style={{ fontSize: "13px", color: "#666" }}>
-          {ride.estimatedFare ? `₲ ${ride.estimatedFare.toFixed(0)}` : "Contactar"}
+        <div>
+          Distancia: {ride.distanceKm !== undefined ? `${ride.distanceKm.toFixed(2)} km` : "N/A"}
         </div>
-        {ride.finalFare && (
-          <div style={{ fontSize: "12px", color: "#999" }}>
-            Pagado: ₲ {ride.finalFare.toFixed(0)}
-          </div>
-        )}
+        <div>
+          Origen: {ride.originLat.toFixed(5)}, {ride.originLng.toFixed(5)}
+        </div>
+        <div>
+          Destino: {ride.destLat.toFixed(5)}, {ride.destLng.toFixed(5)}
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 8 }}>
+          <strong>Total viaje: {formatGuarani(ride.officialFare ?? ride.estimatedFare ?? 0)}</strong>
+          <strong>Comision 5%: {formatGuarani(ride.adminFee || 0)}</strong>
+          <span>Cobrado declarado: {formatGuarani(ride.collectedFare ?? ride.finalFare ?? 0)}</span>
+          <span>Diferencia: {formatGuarani(ride.underchargeAmount || 0)}</span>
+          <span style={{ gridColumn: "1 / -1", fontWeight: 700, color: "#065f46" }}>
+            Ganancia neta: {formatGuarani(ride.driverEarnings || 0)}
+          </span>
+        </div>
       </div>
     </div>
   );

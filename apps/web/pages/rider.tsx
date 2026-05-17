@@ -135,6 +135,12 @@ type User = {
   email?: string;
   phone?: string | null;
   photoUrl?: string | null;
+  approved?: boolean;
+  driverBlocked?: boolean;
+  driverBlockedReason?: string | null;
+  commissionDebt?: number;
+  delinquencyCount?: number;
+  suspendedUntil?: string | null;
   vehicle?: {
     id: string; // Add vehicle ID to type
     placa?: string;
@@ -142,6 +148,19 @@ type User = {
     modelo?: string;
     color?: string;
   };
+};
+
+type DriverSummary = {
+  todayGross: number;
+  todayCommission: number;
+  todayEarnings: number;
+  todayUndercharge: number;
+  totalPendingCommission: number;
+  overdueCommission: number;
+  blocked: boolean;
+  blockedReason?: string | null;
+  suspendedUntil?: string | null;
+  delinquencyCount: number;
 };
 
 type VehicleInfo = {
@@ -194,6 +213,7 @@ export default function RiderPage() {
   const socketRef = useRef<any | null>(null);
   const [user, setUser] = useState<User | null>(null);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [sideMenuOpen, setSideMenuOpen] = useState(false);
   const [vehicleDetailsOpen, setVehicleDetailsOpen] = useState(false);
   const [profileName, setProfileName] = useState("");
   const [profilePhone, setProfilePhone] = useState("");
@@ -221,6 +241,7 @@ export default function RiderPage() {
   const [manualInputAmount, setManualInputAmount] = useState("0");
   const [pendingFare, setPendingFare] = useState<number>(0);
   const [acceptingRideId, setAcceptingRideId] = useState<string | null>(null);
+  const [driverSummary, setDriverSummary] = useState<DriverSummary | null>(null);
 
   const [approvalError, setApprovalError] = useState(false);
   const [geoWarning, setGeoWarning] = useState<string | null>(null);
@@ -438,7 +459,13 @@ export default function RiderPage() {
 
       socket.on(
         "driver:accept_failed",
-        (payload: { rideId: string; reason?: string; restUntil?: string }) => {
+        (payload: {
+          rideId: string;
+          reason?: string;
+          restUntil?: string;
+          amountDue?: number;
+          suspendedUntil?: string;
+        }) => {
           setAcceptingRideId((current) =>
             current === payload.rideId ? null : current,
           );
@@ -456,6 +483,22 @@ export default function RiderPage() {
           if (payload.reason === "driver_session_limit_reached" && payload.restUntil) {
             alert(
               `Alcanzaste el limite de 12 horas. Debes descansar hasta ${new Date(payload.restUntil).toLocaleString("es-PY")}.`,
+            );
+            return;
+          }
+
+          if (payload.reason === "commission_deposit_overdue") {
+            refreshDriverSummary(token).catch(() => {});
+            alert(
+              `Tu cuenta esta bloqueada por comisiones pendientes. Debes depositar ${formatGuarani(payload.amountDue || 0)}.`,
+            );
+            return;
+          }
+
+          if (payload.reason === "suspended_for_delinquency") {
+            refreshDriverSummary(token).catch(() => {});
+            alert(
+              `Tu cuenta esta suspendida hasta ${payload.suspendedUntil ? new Date(payload.suspendedUntil).toLocaleString("es-PY") : "la fecha indicada por administracion"}.`,
             );
             return;
           }
@@ -513,10 +556,11 @@ export default function RiderPage() {
 
       // fetch pendientes existentes y perfil actualizado
       try {
-        const [meRes] = await Promise.all([
+        const [meRes, summary] = await Promise.all([
           fetch(`${API_URL}/me`, {
             headers: { Authorization: `Bearer ${token}` },
           }),
+          refreshDriverSummary(token),
         ]);
 
         if (meRes.ok) {
@@ -540,7 +584,9 @@ export default function RiderPage() {
           }
         }
 
-        await refreshPendingRequests(token);
+        if (!summary?.blocked) {
+          await refreshPendingRequests(token);
+        }
 
         // Fetch active rides (ASIGNADO or EN_CURSO) to restore on page reload
         try {
@@ -665,9 +711,13 @@ export default function RiderPage() {
         const now = Date.now();
         if (token && now - lastPendingRefreshRef.current > 15000) {
           lastPendingRefreshRef.current = now;
-          refreshPendingRequests(token).catch((err) =>
-            console.warn("Error refreshing pending rides:", err),
-          );
+          refreshDriverSummary(token)
+            .then((summary) =>
+              summary?.blocked ? undefined : refreshPendingRequests(token),
+            )
+            .catch((err) =>
+              console.warn("Error refreshing driver operations:", err),
+            );
         }
       },
       (err) => {
@@ -884,6 +934,8 @@ export default function RiderPage() {
   });
 
   const refreshPendingRequests = async (token: string) => {
+    if (driverSummary?.blocked) return;
+
     const ridesRes = await fetch(`${API_URL}/rides?state=PENDIENTE`, {
       headers: { Authorization: `Bearer ${token}` },
     });
@@ -915,6 +967,19 @@ export default function RiderPage() {
         );
       } catch {}
     });
+  };
+
+  const refreshDriverSummary = async (token: string) => {
+    const summaryRes = await fetch(`${API_URL}/me/driver/summary`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!summaryRes.ok) return null;
+    const summary = await summaryRes.json();
+    setDriverSummary(summary);
+    if (summary.blocked) {
+      setRequests([]);
+    }
+    return summary as DriverSummary;
   };
 
   const sendChat = (overrideText?: string) => {
@@ -1008,6 +1073,10 @@ export default function RiderPage() {
 
   const accept = (ride: RideRequest) => {
     if (acceptingRideId) return;
+    if (driverSummary?.blocked) {
+      alert("Debes regularizar el deposito de comisiones antes de aceptar viajes.");
+      return;
+    }
 
     const driverId = user?.id || "demo-driver";
     // Priorizamos el vehiculo real de la BD si existe
@@ -1332,9 +1401,15 @@ export default function RiderPage() {
                 <div style={{ fontSize: 11, color: "#86868b", marginTop: 2 }}>
                   {requests.length} solicitudes pendientes
                 </div>
+                <div style={{ fontSize: 12, color: "#111827", marginTop: 6, fontWeight: 700 }}>
+                  Ganancia hoy: {formatGuarani(driverSummary?.todayEarnings || 0)}
+                </div>
+                <div style={{ fontSize: 11, color: "#555", marginTop: 2 }}>
+                  Comision del dia: {formatGuarani(driverSummary?.todayCommission || 0)}
+                </div>
               </div>
               <button
-                onClick={() => setProfileOpen(true)}
+                onClick={() => setSideMenuOpen(true)}
                 style={{
                   padding: "6px 12px",
                   background: "white",
@@ -1347,26 +1422,89 @@ export default function RiderPage() {
                   whiteSpace: "nowrap",
                 }}
               >
-                Perfil
-              </button>
-              <button
-                onClick={handleLogout}
-                style={{
-                  padding: "6px 12px",
-                  background: "#FF3B30",
-                  color: "white",
-                  border: "none",
-                  borderRadius: "8px",
-                  fontSize: 12,
-                  fontWeight: 600,
-                  cursor: "pointer",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                Cerrar sesión
+                Menu
               </button>
             </div>
           </div>
+
+          {driverSummary?.blocked && (
+            <div
+              style={{
+                position: "fixed",
+                top: isMobile ? 178 : 168,
+                left: isMobile ? 12 : 24,
+                right: isMobile ? 12 : "auto",
+                zIndex: 12,
+                width: isMobile ? "auto" : 360,
+                background: "#fff7ed",
+                color: "#7c2d12",
+                border: "1px solid #fed7aa",
+                borderRadius: 12,
+                padding: 14,
+                boxShadow: "0 4px 16px rgba(0,0,0,0.1)",
+                fontSize: 13,
+                lineHeight: 1.45,
+              }}
+            >
+              <div style={{ fontWeight: 800, marginBottom: 4 }}>
+                Cuenta bloqueada operativamente
+              </div>
+              {driverSummary.blockedReason === "suspended_for_delinquency" ? (
+                <div>
+                  Suspension por morosidad hasta{" "}
+                  {driverSummary.suspendedUntil
+                    ? new Date(driverSummary.suspendedUntil).toLocaleString("es-PY")
+                    : "la fecha indicada por administracion"}.
+                </div>
+              ) : (
+                <div>
+                  Debes depositar {formatGuarani(driverSummary.overdueCommission)} en la cuenta de comisiones para volver a trabajar.
+                </div>
+              )}
+            </div>
+          )}
+
+          {sideMenuOpen && (
+            <div
+              onClick={() => setSideMenuOpen(false)}
+              style={{
+                position: "fixed",
+                inset: 0,
+                zIndex: 2100,
+                background: "rgba(0,0,0,0.25)",
+              }}
+            >
+              <div
+                onClick={(e) => e.stopPropagation()}
+                style={{
+                  position: "absolute",
+                  top: 0,
+                  right: 0,
+                  width: "min(82vw, 320px)",
+                  height: "100%",
+                  background: "white",
+                  boxShadow: "-12px 0 40px rgba(0,0,0,0.2)",
+                  padding: 20,
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 10,
+                }}
+              >
+                <div style={{ fontSize: 18, fontWeight: 800, marginBottom: 10 }}>
+                  Conductor
+                </div>
+                <button onClick={() => { setProfileOpen(true); setSideMenuOpen(false); }} style={{ padding: 12, border: "1px solid #e5e7eb", background: "white", borderRadius: 10, textAlign: "left", fontWeight: 700 }}>
+                  Perfil
+                </button>
+                <button onClick={() => router.push("/conductor/viajes")} style={{ padding: 12, border: "1px solid #e5e7eb", background: "white", borderRadius: 10, textAlign: "left", fontWeight: 700 }}>
+                  Historial
+                </button>
+                <button onClick={handleLogout} style={{ marginTop: "auto", padding: 12, border: "none", background: "#FF3B30", color: "white", borderRadius: 10, textAlign: "left", fontWeight: 800 }}>
+                  Cerrar sesion
+                </button>
+              </div>
+            </div>
+          )}
 
       {profileOpen && (
         <div style={{ position: "fixed", inset: 0, zIndex: 2200, background: "rgba(0,0,0,0.35)", display: "grid", placeItems: "center", padding: 16 }}>
@@ -1458,7 +1596,6 @@ export default function RiderPage() {
                   socketRef.current?.emit("driver:end_ride", {
                     rideId: activeRide.id,
                     finalFare,
-                    state: "CANCELADO",
                   });
                   setPendingFare(finalFare);
                   setShowManualInputModal(false);

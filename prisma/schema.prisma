@@ -40,6 +40,16 @@ model User {
   vehicles       Vehicle[]
   notifications  Notification[]
   driverSessions DriverSession[]
+  driverCommissionSettlements DriverCommissionSettlement[] @relation("DriverCommissionSettlements")
+  managedCommissionDeposits DriverCommissionDeposit[] @relation("ManagedCommissionDeposits")
+  driverCommissionDeposits DriverCommissionDeposit[] @relation("DriverCommissionDeposits")
+
+  driverBlocked Boolean @default(false)
+  driverBlockedReason String?
+  commissionDebt Float @default(0)
+  underchargeDebt Float @default(0)
+  delinquencyCount Int @default(0)
+  suspendedUntil DateTime?
 }
 
 enum UserRole {
@@ -91,6 +101,9 @@ model Ride {
   destLng       Float
   estimatedFare Float
   finalFare     Float?
+  officialFare   Float?
+  collectedFare  Float?
+  underchargeAmount Float? @default(0)
   adminFee      Float?
   driverEarnings Float?
   state         RideState
@@ -100,6 +113,44 @@ model Ride {
   cancelledAt   DateTime?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
+}
+
+model DriverCommissionSettlement {
+  id        String @id @default(cuid())
+  driver   User   @relation("DriverCommissionSettlements", fields: [driverId], references: [id], onDelete: Cascade)
+  driverId String
+  serviceDate DateTime
+  amountDue Float @default(0)
+  paidAt DateTime?
+  receiptNumber String?
+  status DriverCommissionSettlementStatus @default(PENDING)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([driverId, serviceDate])
+  @@index([driverId, status])
+}
+
+model DriverCommissionDeposit {
+  id        String @id @default(cuid())
+  driver   User   @relation("DriverCommissionDeposits", fields: [driverId], references: [id], onDelete: Cascade)
+  driverId String
+  managedBy User? @relation("ManagedCommissionDeposits", fields: [managedById], references: [id], onDelete: SetNull)
+  managedById String?
+  driverName String
+  managedByName String
+  receiptNumber String
+  amount Float
+  delinquencyCountAtRelease Int
+  managedAt DateTime @default(now())
+  createdAt DateTime @default(now())
+
+  @@index([driverId, managedAt])
+}
+
+enum DriverCommissionSettlementStatus {
+  PENDING
+  PAID
 }
 
 model DriverSession {

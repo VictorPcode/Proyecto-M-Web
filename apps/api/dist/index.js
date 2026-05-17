@@ -18,6 +18,7 @@ const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
 const nodemailer_1 = __importDefault(require("nodemailer"));
 // In-memory password reset token store
 const resetTokens = new Map();
+const operationalDb = prisma_1.default;
 function createMailTransporter() {
     const host = process.env.SMTP_HOST;
     const port = parseInt(process.env.SMTP_PORT || "587");
@@ -59,10 +60,19 @@ async function ensureDatabaseCompatibility() {
     await prisma_1.default.$executeRawUnsafe(`ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "photoUrl" TEXT`);
     await prisma_1.default.$executeRawUnsafe(`ALTER TABLE "Ride" ADD COLUMN IF NOT EXISTS "adminFee" DOUBLE PRECISION`);
     await prisma_1.default.$executeRawUnsafe(`ALTER TABLE "Ride" ADD COLUMN IF NOT EXISTS "driverEarnings" DOUBLE PRECISION`);
+    await prisma_1.default.$executeRawUnsafe(`ALTER TABLE "Ride" ADD COLUMN IF NOT EXISTS "officialFare" DOUBLE PRECISION`);
+    await prisma_1.default.$executeRawUnsafe(`ALTER TABLE "Ride" ADD COLUMN IF NOT EXISTS "collectedFare" DOUBLE PRECISION`);
+    await prisma_1.default.$executeRawUnsafe(`ALTER TABLE "Ride" ADD COLUMN IF NOT EXISTS "underchargeAmount" DOUBLE PRECISION DEFAULT 0`);
     await prisma_1.default.$executeRawUnsafe(`ALTER TABLE "Ride" ADD COLUMN IF NOT EXISTS "acceptedAt" TIMESTAMP(3)`);
     await prisma_1.default.$executeRawUnsafe(`ALTER TABLE "Ride" ADD COLUMN IF NOT EXISTS "startedAt" TIMESTAMP(3)`);
     await prisma_1.default.$executeRawUnsafe(`ALTER TABLE "Ride" ADD COLUMN IF NOT EXISTS "completedAt" TIMESTAMP(3)`);
     await prisma_1.default.$executeRawUnsafe(`ALTER TABLE "Ride" ADD COLUMN IF NOT EXISTS "cancelledAt" TIMESTAMP(3)`);
+    await prisma_1.default.$executeRawUnsafe(`ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "driverBlocked" BOOLEAN NOT NULL DEFAULT false`);
+    await prisma_1.default.$executeRawUnsafe(`ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "driverBlockedReason" TEXT`);
+    await prisma_1.default.$executeRawUnsafe(`ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "commissionDebt" DOUBLE PRECISION NOT NULL DEFAULT 0`);
+    await prisma_1.default.$executeRawUnsafe(`ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "underchargeDebt" DOUBLE PRECISION NOT NULL DEFAULT 0`);
+    await prisma_1.default.$executeRawUnsafe(`ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "delinquencyCount" INTEGER NOT NULL DEFAULT 0`);
+    await prisma_1.default.$executeRawUnsafe(`ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "suspendedUntil" TIMESTAMP(3)`);
     await prisma_1.default.$executeRawUnsafe(`
     DO $$
     BEGIN
@@ -89,6 +99,46 @@ async function ensureDatabaseCompatibility() {
     await prisma_1.default.$executeRawUnsafe(`
     DO $$
     BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'DriverCommissionSettlementStatus') THEN
+        CREATE TYPE "DriverCommissionSettlementStatus" AS ENUM ('PENDING', 'PAID');
+      END IF;
+    END $$;
+  `);
+    await prisma_1.default.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS "DriverCommissionSettlement" (
+      "id" TEXT NOT NULL,
+      "driverId" TEXT NOT NULL,
+      "serviceDate" TIMESTAMP(3) NOT NULL,
+      "amountDue" DOUBLE PRECISION NOT NULL DEFAULT 0,
+      "paidAt" TIMESTAMP(3),
+      "receiptNumber" TEXT,
+      "status" "DriverCommissionSettlementStatus" NOT NULL DEFAULT 'PENDING',
+      "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "updatedAt" TIMESTAMP(3) NOT NULL,
+      CONSTRAINT "DriverCommissionSettlement_pkey" PRIMARY KEY ("id")
+    )
+  `);
+    await prisma_1.default.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS "DriverCommissionDeposit" (
+      "id" TEXT NOT NULL,
+      "driverId" TEXT NOT NULL,
+      "managedById" TEXT,
+      "driverName" TEXT NOT NULL,
+      "managedByName" TEXT NOT NULL,
+      "receiptNumber" TEXT NOT NULL,
+      "amount" DOUBLE PRECISION NOT NULL,
+      "delinquencyCountAtRelease" INTEGER NOT NULL,
+      "managedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT "DriverCommissionDeposit_pkey" PRIMARY KEY ("id")
+    )
+  `);
+    await prisma_1.default.$executeRawUnsafe(`CREATE UNIQUE INDEX IF NOT EXISTS "DriverCommissionSettlement_driverId_serviceDate_key" ON "DriverCommissionSettlement"("driverId", "serviceDate")`);
+    await prisma_1.default.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "DriverCommissionSettlement_driverId_status_idx" ON "DriverCommissionSettlement"("driverId", "status")`);
+    await prisma_1.default.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "DriverCommissionDeposit_driverId_managedAt_idx" ON "DriverCommissionDeposit"("driverId", "managedAt")`);
+    await prisma_1.default.$executeRawUnsafe(`
+    DO $$
+    BEGIN
       IF NOT EXISTS (
         SELECT 1
         FROM pg_constraint
@@ -99,6 +149,45 @@ async function ensureDatabaseCompatibility() {
           FOREIGN KEY ("driverId")
           REFERENCES "User"("id")
           ON DELETE CASCADE
+          ON UPDATE CASCADE;
+      END IF;
+
+      IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conname = 'DriverCommissionSettlement_driverId_fkey'
+      ) THEN
+        ALTER TABLE "DriverCommissionSettlement"
+          ADD CONSTRAINT "DriverCommissionSettlement_driverId_fkey"
+          FOREIGN KEY ("driverId")
+          REFERENCES "User"("id")
+          ON DELETE CASCADE
+          ON UPDATE CASCADE;
+      END IF;
+
+      IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conname = 'DriverCommissionDeposit_driverId_fkey'
+      ) THEN
+        ALTER TABLE "DriverCommissionDeposit"
+          ADD CONSTRAINT "DriverCommissionDeposit_driverId_fkey"
+          FOREIGN KEY ("driverId")
+          REFERENCES "User"("id")
+          ON DELETE CASCADE
+          ON UPDATE CASCADE;
+      END IF;
+
+      IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conname = 'DriverCommissionDeposit_managedById_fkey'
+      ) THEN
+        ALTER TABLE "DriverCommissionDeposit"
+          ADD CONSTRAINT "DriverCommissionDeposit_managedById_fkey"
+          FOREIGN KEY ("managedById")
+          REFERENCES "User"("id")
+          ON DELETE SET NULL
           ON UPDATE CASCADE;
       END IF;
     END $$;
@@ -119,6 +208,38 @@ const upload = (0, multer_1.default)({
     },
 });
 const JWT_SECRET = process.env.JWT_SECRET || "devsecret";
+const COMMISSION_RATE = 0.05;
+const COMMISSION_DEADLINE_HOUR = 9;
+const DRIVER_SUSPENSION_MS = 5 * 24 * 60 * 60 * 1000;
+function startOfDay(value = new Date()) {
+    const date = new Date(value);
+    date.setHours(0, 0, 0, 0);
+    return date;
+}
+function nextDayCommissionDeadline(serviceDate) {
+    const deadline = startOfDay(serviceDate);
+    deadline.setDate(deadline.getDate() + 1);
+    deadline.setHours(COMMISSION_DEADLINE_HOUR, 0, 0, 0);
+    return deadline;
+}
+function isSettlementOverdue(serviceDate, now = new Date()) {
+    return now.getTime() >= nextDayCommissionDeadline(serviceDate).getTime();
+}
+function calculateCommission(fare) {
+    return Math.round(Math.max(Number(fare) || 0, 0) * COMMISSION_RATE);
+}
+function calculateDistanceKm(originLat, originLng, destLat, destLng) {
+    const toRad = (v) => (v * Math.PI) / 180;
+    const earthKm = 6371;
+    const dLat = toRad(destLat - originLat);
+    const dLng = toRad(destLng - originLng);
+    const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos(toRad(originLat)) *
+            Math.cos(toRad(destLat)) *
+            Math.sin(dLng / 2) *
+            Math.sin(dLng / 2);
+    return earthKm * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
 function authMiddleware(req, res, next) {
     const auth = Array.isArray(req.headers.authorization)
         ? req.headers.authorization[0]
@@ -134,6 +255,134 @@ function authMiddleware(req, res, next) {
     catch {
         return res.status(401).json({ error: "invalid_token" });
     }
+}
+async function syncDriverCommissionOperations(driverId) {
+    const now = new Date();
+    const rides = await prisma_1.default.ride.findMany({
+        where: {
+            driverId,
+            state: RideState.FINALIZADO,
+            completedAt: { not: null },
+        },
+        select: {
+            completedAt: true,
+            estimatedFare: true,
+            finalFare: true,
+            officialFare: true,
+            adminFee: true,
+            underchargeAmount: true,
+        },
+    });
+    const commissionByDate = new Map();
+    let todayGross = 0;
+    let todayCommission = 0;
+    let todayEarnings = 0;
+    let todayUndercharge = 0;
+    const todayKey = startOfDay(now).toISOString();
+    rides.forEach((ride) => {
+        const rideOperational = ride;
+        const serviceDate = startOfDay(ride.completedAt || now);
+        const key = serviceDate.toISOString();
+        const officialFare = rideOperational.officialFare ?? ride.estimatedFare ?? ride.finalFare ?? 0;
+        const commission = ride.adminFee ?? calculateCommission(officialFare);
+        const undercharge = rideOperational.underchargeAmount ?? 0;
+        commissionByDate.set(key, (commissionByDate.get(key) || 0) + commission);
+        if (key === todayKey) {
+            todayGross += officialFare;
+            todayCommission += commission;
+            todayUndercharge += undercharge;
+            todayEarnings += Math.max(officialFare - commission - undercharge, 0);
+        }
+    });
+    for (const [key, amountDue] of commissionByDate) {
+        await operationalDb.driverCommissionSettlement.upsert({
+            where: {
+                driverId_serviceDate: {
+                    driverId,
+                    serviceDate: new Date(key),
+                },
+            },
+            create: {
+                driverId,
+                serviceDate: new Date(key),
+                amountDue,
+            },
+            update: {
+                amountDue,
+            },
+        });
+    }
+    const pendingSettlements = await operationalDb.driverCommissionSettlement.findMany({
+        where: {
+            driverId,
+            status: "PENDING",
+            amountDue: { gt: 0 },
+        },
+        orderBy: { serviceDate: "asc" },
+    });
+    const overdueSettlements = pendingSettlements.filter((settlement) => isSettlementOverdue(settlement.serviceDate, now));
+    const commissionDebt = overdueSettlements.reduce((sum, settlement) => sum + settlement.amountDue, 0);
+    const totalPendingCommission = pendingSettlements.reduce((sum, settlement) => sum + settlement.amountDue, 0);
+    const driver = await operationalDb.user.findUnique({
+        where: { id: driverId },
+        select: {
+            id: true,
+            driverBlocked: true,
+            driverBlockedReason: true,
+            commissionDebt: true,
+            suspendedUntil: true,
+            delinquencyCount: true,
+            underchargeDebt: true,
+        },
+    });
+    const driverOperational = driver;
+    const suspendedUntil = driverOperational?.suspendedUntil;
+    const suspended = !!suspendedUntil && suspendedUntil.getTime() > now.getTime();
+    const blocked = suspended || commissionDebt > 0;
+    const blockedReason = suspended
+        ? "suspended_for_delinquency"
+        : commissionDebt > 0
+            ? "commission_deposit_overdue"
+            : null;
+    if (driver &&
+        (driverOperational.driverBlocked !== blocked ||
+            driverOperational.driverBlockedReason !== blockedReason ||
+            driverOperational.commissionDebt !== commissionDebt)) {
+        await operationalDb.user.update({
+            where: { id: driverId },
+            data: {
+                driverBlocked: blocked,
+                driverBlockedReason: blockedReason,
+                commissionDebt,
+            },
+        });
+    }
+    return {
+        todayGross,
+        todayCommission,
+        todayEarnings,
+        todayUndercharge,
+        totalPendingCommission,
+        overdueCommission: commissionDebt,
+        blocked,
+        blockedReason,
+        suspendedUntil: suspendedUntil || null,
+        delinquencyCount: driverOperational?.delinquencyCount || 0,
+        underchargeDebt: driverOperational?.underchargeDebt || 0,
+        settlements: pendingSettlements,
+    };
+}
+async function getDriverOperationalStatus(driverId) {
+    const summary = await syncDriverCommissionOperations(driverId);
+    if (summary.blocked) {
+        return {
+            ok: false,
+            reason: summary.blockedReason || "driver_blocked",
+            amountDue: summary.overdueCommission,
+            suspendedUntil: summary.suspendedUntil,
+        };
+    }
+    return { ok: true };
 }
 // =======================
 // 
@@ -390,7 +639,18 @@ app.get("/me", authMiddleware, async (req, res) => {
         });
         if (!user)
             return res.status(404).json({ error: "not_found" });
-        const { password, vehicles, ...safe } = user;
+        if (user.role === "DRIVER") {
+            await syncDriverCommissionOperations(user.id);
+        }
+        const refreshed = user.role === "DRIVER"
+            ? await prisma_1.default.user.findUnique({
+                where: { id: userId },
+                include: { vehicles: true },
+            })
+            : user;
+        if (!refreshed)
+            return res.status(404).json({ error: "not_found" });
+        const { password, vehicles, ...safe } = refreshed;
         return res.json({
             ...safe,
             vehicle: vehicles?.[0] || null,
@@ -489,13 +749,34 @@ app.get("/me/rides", authMiddleware, async (req, res) => {
             },
         });
         const result = rides.map((ride) => {
-            const paidFare = ride.finalFare ?? ride.estimatedFare ?? 0;
-            const adminFee = ride.adminFee ?? Math.round(paidFare * 0.05);
-            const driverEarnings = ride.driverEarnings ?? Math.max(paidFare - adminFee, 0);
+            const rideOperational = ride;
+            const officialFare = rideOperational.officialFare ?? ride.estimatedFare ?? 0;
+            const collectedFare = rideOperational.collectedFare ?? ride.finalFare ?? officialFare;
+            const adminFee = ride.adminFee ?? calculateCommission(officialFare);
+            const underchargeAmount = rideOperational.underchargeAmount ?? Math.max(officialFare - collectedFare, 0);
+            const driverEarnings = ride.driverEarnings ?? Math.max(officialFare - adminFee - underchargeAmount, 0);
+            const distanceKm = calculateDistanceKm(ride.originLat, ride.originLng, ride.destLat, ride.destLng);
+            if (role === "DRIVER") {
+                const { passenger, driver, ...safeRide } = ride;
+                return {
+                    ...safeRide,
+                    passengerName: passenger?.name || "Pasajero",
+                    officialFare,
+                    collectedFare,
+                    adminFee,
+                    underchargeAmount,
+                    driverEarnings,
+                    distanceKm,
+                };
+            }
             return {
                 ...ride,
+                officialFare,
+                collectedFare,
                 adminFee,
+                underchargeAmount,
                 driverEarnings,
+                distanceKm,
             };
         });
         return res.json(result);
@@ -503,6 +784,20 @@ app.get("/me/rides", authMiddleware, async (req, res) => {
     catch (err) {
         console.error("GET ME RIDES ERROR:", err);
         return res.status(500).json({ error: "failed_get_me_rides" });
+    }
+});
+app.get("/me/driver/summary", authMiddleware, async (req, res) => {
+    try {
+        const userId = req.user?.id;
+        if (!userId || req.user?.role !== "DRIVER") {
+            return res.status(403).json({ error: "forbidden" });
+        }
+        const summary = await syncDriverCommissionOperations(userId);
+        return res.json(summary);
+    }
+    catch (err) {
+        console.error("GET DRIVER SUMMARY ERROR:", err);
+        return res.status(500).json({ error: "failed_get_driver_summary" });
     }
 });
 // =====================
@@ -546,6 +841,161 @@ app.get("/users", authMiddleware, async (req, res) => {
         return res.status(500).json({
             error: "failed_get_users",
         });
+    }
+});
+app.get("/admin/drivers/operations", authMiddleware, async (req, res) => {
+    try {
+        if (req.user?.role !== "ADMIN") {
+            return res.status(403).json({ error: "forbidden" });
+        }
+        const driversList = await operationalDb.user.findMany({
+            where: { role: "DRIVER" },
+            include: {
+                vehicles: true,
+                driverCommissionSettlements: {
+                    where: { status: "PENDING" },
+                    orderBy: { serviceDate: "asc" },
+                },
+                driverCommissionDeposits: {
+                    orderBy: { managedAt: "desc" },
+                    take: 1,
+                },
+            },
+            orderBy: { createdAt: "desc" },
+        });
+        const enriched = [];
+        for (const driver of driversList) {
+            const summary = await syncDriverCommissionOperations(driver.id);
+            const refreshed = await operationalDb.user.findUnique({
+                where: { id: driver.id },
+                include: {
+                    vehicles: true,
+                    driverCommissionSettlements: {
+                        where: { status: "PENDING" },
+                        orderBy: { serviceDate: "asc" },
+                    },
+                    driverCommissionDeposits: {
+                        orderBy: { managedAt: "desc" },
+                        take: 1,
+                    },
+                },
+            });
+            if (!refreshed)
+                continue;
+            const { password, vehicles, ...safe } = refreshed;
+            enriched.push({
+                ...safe,
+                vehicle: vehicles?.[0] || null,
+                operationalSummary: summary,
+            });
+        }
+        return res.json({
+            drivers: enriched,
+            blockedDrivers: enriched.filter((driver) => driver.driverBlocked ||
+                driver.operationalSummary?.overdueCommission > 0 ||
+                (driver.suspendedUntil &&
+                    new Date(driver.suspendedUntil).getTime() > Date.now())),
+        });
+    }
+    catch (err) {
+        console.error("GET DRIVER OPERATIONS ERROR:", err);
+        return res.status(500).json({ error: "failed_get_driver_operations" });
+    }
+});
+app.post("/admin/drivers/:id/release-commission", authMiddleware, async (req, res) => {
+    try {
+        if (req.user?.role !== "ADMIN") {
+            return res.status(403).json({ error: "forbidden" });
+        }
+        const driverId = Array.isArray(req.params.id)
+            ? req.params.id[0]
+            : req.params.id;
+        const receiptNumber = String(req.body?.receiptNumber || "").trim();
+        if (!receiptNumber) {
+            return res.status(400).json({ error: "missing_receipt_number" });
+        }
+        const driver = await operationalDb.user.findUnique({ where: { id: driverId } });
+        if (!driver || driver.role !== "DRIVER") {
+            return res.status(404).json({ error: "driver_not_found" });
+        }
+        const now = new Date();
+        const driverOperational = driver;
+        const currentSuspendedUntil = driverOperational.suspendedUntil;
+        if (currentSuspendedUntil && currentSuspendedUntil.getTime() > now.getTime()) {
+            return res.status(409).json({
+                error: "driver_suspended",
+                suspendedUntil: currentSuspendedUntil,
+            });
+        }
+        await syncDriverCommissionOperations(driverId);
+        const pendingSettlements = await operationalDb.driverCommissionSettlement.findMany({
+            where: {
+                driverId,
+                status: "PENDING",
+                amountDue: { gt: 0 },
+            },
+        });
+        const overdueSettlements = pendingSettlements.filter((settlement) => isSettlementOverdue(settlement.serviceDate, now));
+        const overdueSettlementIds = overdueSettlements.map((settlement) => settlement.id);
+        const amount = overdueSettlements.reduce((sum, item) => sum + item.amountDue, 0);
+        if (amount <= 0) {
+            return res.status(400).json({ error: "no_pending_commission" });
+        }
+        const admin = req.user?.id
+            ? await prisma_1.default.user.findUnique({ where: { id: req.user.id } })
+            : null;
+        const delinquencyCount = (driverOperational.delinquencyCount || 0) + 1;
+        const shouldSuspend = delinquencyCount > 3;
+        const suspendedUntil = shouldSuspend
+            ? new Date(now.getTime() + DRIVER_SUSPENSION_MS)
+            : null;
+        const result = await prisma_1.default.$transaction(async (tx) => {
+            const operationalTx = tx;
+            await operationalTx.driverCommissionSettlement.updateMany({
+                where: {
+                    id: { in: overdueSettlementIds },
+                },
+                data: {
+                    status: "PAID",
+                    paidAt: now,
+                    receiptNumber,
+                },
+            });
+            const deposit = await operationalTx.driverCommissionDeposit.create({
+                data: {
+                    driverId,
+                    managedById: admin?.id,
+                    driverName: driver.name,
+                    managedByName: admin?.name || "Administrador",
+                    receiptNumber,
+                    amount,
+                    delinquencyCountAtRelease: delinquencyCount,
+                },
+            });
+            const updatedDriver = await operationalTx.user.update({
+                where: { id: driverId },
+                data: {
+                    commissionDebt: 0,
+                    driverBlocked: shouldSuspend,
+                    driverBlockedReason: shouldSuspend ? "suspended_for_delinquency" : null,
+                    delinquencyCount,
+                    suspendedUntil,
+                },
+            });
+            return { deposit, driver: updatedDriver };
+        });
+        const { password, ...safeDriver } = result.driver;
+        return res.json({
+            ok: true,
+            deposit: result.deposit,
+            driver: safeDriver,
+            suspended: shouldSuspend,
+            suspendedUntil,
+        });
+    }
+    catch (err) {
+        console.error("RELEASE DRIVER COMMISSION ERROR:", err);
+        return res.status(500).json({ error: "failed_release_driver_commission" });
     }
 });
 // =====================
@@ -811,6 +1261,9 @@ async function canUserAccessRide(rideId, userId, role) {
     return true;
 }
 async function ensureDriverCanWork(driverId) {
+    const operationalStatus = await getDriverOperationalStatus(driverId);
+    if (!operationalStatus.ok)
+        return operationalStatus;
     const now = new Date();
     const restingSession = await prisma_1.default.driverSession.findFirst({
         where: {
@@ -942,10 +1395,13 @@ drivers.on("connection", (socket) => {
             }
             const workStatus = await ensureDriverCanWork(data.driverId);
             if (!workStatus.ok) {
+                const failedStatus = workStatus;
                 socket.emit("driver:accept_failed", {
                     rideId: data.rideId,
-                    reason: workStatus.reason,
-                    restUntil: workStatus.restUntil,
+                    reason: failedStatus.reason,
+                    restUntil: failedStatus.restUntil,
+                    amountDue: failedStatus.amountDue,
+                    suspendedUntil: failedStatus.suspendedUntil,
                 });
                 return;
             }
@@ -1030,10 +1486,13 @@ drivers.on("connection", (socket) => {
                 return;
             const workStatus = await ensureDriverCanWork(driverId);
             if (!workStatus.ok) {
+                const failedStatus = workStatus;
                 socket.emit("driver:start_failed", {
                     rideId,
-                    reason: workStatus.reason,
-                    restUntil: workStatus.restUntil,
+                    reason: failedStatus.reason,
+                    restUntil: failedStatus.restUntil,
+                    amountDue: failedStatus.amountDue,
+                    suspendedUntil: failedStatus.suspendedUntil,
                 });
                 return;
             }
@@ -1077,7 +1536,13 @@ drivers.on("connection", (socket) => {
                 : RideState.FINALIZADO;
             const ride = await prisma_1.default.ride.findUnique({
                 where: { id: rideId },
-                select: { id: true, driverId: true, state: true },
+                select: {
+                    id: true,
+                    driverId: true,
+                    state: true,
+                    estimatedFare: true,
+                    officialFare: true,
+                },
             });
             if (!ride || ride.driverId !== driverId) {
                 socket.emit("driver:end_failed", {
@@ -1095,9 +1560,17 @@ drivers.on("connection", (socket) => {
             }
             const updateData = { state: newState };
             if (finalFare !== undefined && finalFare !== null) {
-                updateData.finalFare = finalFare;
-                updateData.adminFee = Math.round(finalFare * 0.05);
-                updateData.driverEarnings = Math.max(finalFare - updateData.adminFee, 0);
+                const rideOperational = ride;
+                const officialFare = rideOperational.officialFare ?? ride.estimatedFare ?? finalFare;
+                const collectedFare = Math.max(Number(finalFare) || 0, 0);
+                const underchargeAmount = Math.max(officialFare - collectedFare, 0);
+                const adminFee = calculateCommission(officialFare);
+                updateData.officialFare = officialFare;
+                updateData.finalFare = officialFare;
+                updateData.collectedFare = collectedFare;
+                updateData.underchargeAmount = underchargeAmount;
+                updateData.adminFee = adminFee;
+                updateData.driverEarnings = Math.max(officialFare - adminFee - underchargeAmount, 0);
             }
             if (newState === RideState.FINALIZADO)
                 updateData.completedAt = new Date();
@@ -1108,10 +1581,18 @@ drivers.on("connection", (socket) => {
                 data: updateData,
                 include: { passenger: true, driver: true, vehicle: true },
             });
+            if (updated.driverId && updated.state === RideState.FINALIZADO) {
+                await syncDriverCommissionOperations(updated.driverId);
+            }
+            const updatedOperational = updated;
             const payload = {
                 rideId,
                 newState: updated.state,
                 finalFare: updated.finalFare,
+                officialFare: updatedOperational.officialFare,
+                collectedFare: updatedOperational.collectedFare,
+                adminFee: updated.adminFee,
+                driverEarnings: updated.driverEarnings,
             };
             passengers.emit("ride:status_changed", payload);
             drivers.emit("ride:status_changed", payload);
