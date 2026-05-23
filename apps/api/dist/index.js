@@ -56,6 +56,57 @@ function cleanAddressLabel(value) {
         return "";
     return first;
 }
+function normalizeGooglePlace(place) {
+    const lat = place?.location?.latitude;
+    const lon = place?.location?.longitude;
+    if (typeof lat !== "number" || typeof lon !== "number")
+        return null;
+    const name = place?.displayName?.text || "";
+    const address = place?.formattedAddress || "";
+    const displayName = [name, address].filter(Boolean).join(", ");
+    return {
+        display_name: displayName || `${lat}, ${lon}`,
+        lat: String(lat),
+        lon: String(lon),
+        source: "google",
+        place_id: place?.id || place?.name,
+        type: Array.isArray(place?.types) ? place.types[0] : undefined,
+    };
+}
+async function searchGooglePlaces(query, limit) {
+    const apiKey = process.env.GOOGLE_PLACES_API_KEY;
+    if (!apiKey)
+        return [];
+    const response = await fetch("https://places.googleapis.com/v1/places:searchText", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+            "X-Goog-Api-Key": apiKey,
+            "X-Goog-FieldMask": "places.id,places.displayName,places.formattedAddress,places.location,places.types",
+        },
+        body: JSON.stringify({
+            textQuery: query,
+            languageCode: "es",
+            regionCode: "PY",
+            pageSize: Math.min(Math.max(limit, 1), 20),
+            locationBias: {
+                rectangle: {
+                    low: { latitude: -27.7, longitude: -62.9 },
+                    high: { latitude: -19.2, longitude: -54.2 },
+                },
+            },
+        }),
+    });
+    if (!response.ok) {
+        const body = await response.text().catch(() => "");
+        throw new Error(`google_places_${response.status}_${body.slice(0, 120)}`);
+    }
+    const data = await response.json();
+    return (Array.isArray(data?.places) ? data.places : [])
+        .map(normalizeGooglePlace)
+        .filter(Boolean)
+        .slice(0, limit);
+}
 async function ensureDatabaseCompatibility() {
     await prisma_1.default.$executeRawUnsafe(`ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "photoUrl" TEXT`);
     await prisma_1.default.$executeRawUnsafe(`ALTER TABLE "Ride" ADD COLUMN IF NOT EXISTS "adminFee" DOUBLE PRECISION`);
@@ -1143,6 +1194,17 @@ app.get("/geocode", async (req, res) => {
             }
             return query;
         })();
+        if (process.env.GOOGLE_PLACES_API_KEY) {
+            try {
+                const googleSuggestions = await searchGooglePlaces(normalizedQuery, limit);
+                if (googleSuggestions.length > 0) {
+                    return res.json(googleSuggestions);
+                }
+            }
+            catch (err) {
+                console.warn("GOOGLE PLACES ERROR, falling back to Nominatim:", err);
+            }
+        }
         const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(normalizedQuery)}&format=json&limit=${limit}&countrycodes=py&accept-language=es&addressdetails=1`;
         const response = await fetch(url, {
             headers: {
@@ -1150,7 +1212,15 @@ app.get("/geocode", async (req, res) => {
             },
         });
         const data = await response.json();
-        return res.json(data || []);
+        const suggestions = (Array.isArray(data) ? data : []).map((item) => ({
+            display_name: item.display_name,
+            lat: item.lat,
+            lon: item.lon,
+            source: "nominatim",
+            place_id: item.place_id ? String(item.place_id) : undefined,
+            type: item.type,
+        }));
+        return res.json(suggestions || []);
     }
     catch (err) {
         console.error("GEOCODE ERROR:", err);

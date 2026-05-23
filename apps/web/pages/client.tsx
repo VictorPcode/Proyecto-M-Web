@@ -67,6 +67,9 @@ type Suggestion = {
   display_name: string;
   lat: string;
   lon: string;
+  source?: "google" | "nominatim";
+  place_id?: string;
+  type?: string;
 };
 
 type ChatMessage = {
@@ -201,6 +204,9 @@ export default function ClientPage() {
   const [geocodingError, setGeocodingError] = useState<string | null>(null);
   const [originSuggestions, setOriginSuggestions] = useState<Suggestion[]>([]);
   const [destSuggestions, setDestSuggestions] = useState<Suggestion[]>([]);
+  const [activeSearchField, setActiveSearchField] = useState<"origin" | "dest">(
+    "dest",
+  );
   const [geoWarning, setGeoWarning] = useState<string | null>(null);
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [chatOpen, setChatOpen] = useState(false);
@@ -982,8 +988,23 @@ export default function ClientPage() {
     }
   };
 
+  const suggestionCoords = (suggestion?: Suggestion): [number, number] | null => {
+    if (!suggestion) return null;
+    const lng = Number(suggestion.lon);
+    const lat = Number(suggestion.lat);
+    if (!Number.isFinite(lng) || !Number.isFinite(lat)) return null;
+    return [lng, lat];
+  };
+
+  const shortSuggestionName = (suggestion: Suggestion) => {
+    const name = suggestion.display_name.split(",")[0]?.trim();
+    return name || suggestion.display_name;
+  };
+
   const handleOriginChange = (query: string) => {
+    setActiveSearchField("origin");
     setOriginQuery(query);
+    setDestSuggestions([]);
     if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
     debounceTimerRef.current = setTimeout(async () => {
       if (!query.trim() || query.trim().length < 2) {
@@ -1011,7 +1032,9 @@ export default function ClientPage() {
   };
 
   const handleDestChange = (query: string) => {
+    setActiveSearchField("dest");
     setDestQuery(query);
+    setOriginSuggestions([]);
     if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
     debounceTimerRef.current = setTimeout(async () => {
       if (!query.trim() || query.trim().length < 2) {
@@ -1118,8 +1141,23 @@ export default function ClientPage() {
   };
 
   const driverCoords = driverPos;
+  const activeSuggestions =
+    activeSearchField === "origin" ? originSuggestions : destSuggestions;
+  const firstSuggestionCoords = suggestionCoords(activeSuggestions[0]);
+  const mapCenter =
+    firstSuggestionCoords || originCoords || destCoords || ([-57.6, -25.3] as [number, number]);
 
   const markers = [];
+  activeSuggestions.forEach((suggestion, index) => {
+    const coords = suggestionCoords(suggestion);
+    if (!coords) return;
+    markers.push({
+      id: `${activeSearchField}-suggestion-${suggestion.place_id || index}`,
+      lngLat: coords,
+      color: activeSearchField === "origin" ? "#4285f4" : "#ff6b35",
+      title: shortSuggestionName(suggestion),
+    });
+  });
   if (originCoords)
     markers.push({
       id: "origin",
@@ -1271,8 +1309,8 @@ export default function ClientPage() {
       )}
 
       <LeafletMap
-        center={originCoords || destCoords || [-57.6, -25.3]}
-        zoom={13}
+        center={mapCenter}
+        zoom={firstSuggestionCoords ? 15 : 13}
         markers={markers}
         route={
           originCoords &&
