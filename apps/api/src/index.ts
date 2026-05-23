@@ -72,6 +72,18 @@ type GeocodeSuggestion = {
   type?: string;
 };
 
+function isWithinParaguay(lat: number, lon: number) {
+  return lat >= -27.7 && lat <= -19.2 && lon >= -62.9 && lon <= -54.2;
+}
+
+function filterParaguaySuggestions(suggestions: GeocodeSuggestion[]) {
+  return suggestions.filter((suggestion) => {
+    const lat = Number(suggestion.lat);
+    const lon = Number(suggestion.lon);
+    return Number.isFinite(lat) && Number.isFinite(lon) && isWithinParaguay(lat, lon);
+  });
+}
+
 function normalizeGooglePlace(place: any): GeocodeSuggestion | null {
   const lat = place?.location?.latitude;
   const lon = place?.location?.longitude;
@@ -148,6 +160,9 @@ async function searchGooglePlaces(
   return (Array.isArray(data?.places) ? data.places : [])
     .map(normalizeGooglePlace)
     .filter(Boolean)
+    .filter((suggestion) =>
+      isWithinParaguay(Number(suggestion!.lat), Number(suggestion!.lon)),
+    )
     .slice(0, limit) as GeocodeSuggestion[];
 }
 
@@ -178,6 +193,9 @@ async function searchGooglePlacesLegacy(
   return (Array.isArray(data?.results) ? data.results : [])
     .map(normalizeLegacyGooglePlace)
     .filter(Boolean)
+    .filter((suggestion) =>
+      isWithinParaguay(Number(suggestion!.lat), Number(suggestion!.lon)),
+    )
     .slice(0, limit) as GeocodeSuggestion[];
 }
 
@@ -1564,14 +1582,16 @@ app.get("/geocode", async (req, res) => {
 
     const data = await response.json();
 
-    const suggestions = (Array.isArray(data) ? data : []).map((item: any) => ({
-      display_name: item.display_name,
-      lat: item.lat,
-      lon: item.lon,
-      source: "nominatim",
-      place_id: item.place_id ? String(item.place_id) : undefined,
-      type: item.type,
-    }));
+    const suggestions = filterParaguaySuggestions(
+      (Array.isArray(data) ? data : []).map((item: any) => ({
+        display_name: item.display_name,
+        lat: item.lat,
+        lon: item.lon,
+        source: "nominatim",
+        place_id: item.place_id ? String(item.place_id) : undefined,
+        type: item.type,
+      })),
+    );
 
     return res.json(suggestions || []);
   } catch (err) {

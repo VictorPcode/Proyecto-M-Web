@@ -56,6 +56,16 @@ function cleanAddressLabel(value) {
         return "";
     return first;
 }
+function isWithinParaguay(lat, lon) {
+    return lat >= -27.7 && lat <= -19.2 && lon >= -62.9 && lon <= -54.2;
+}
+function filterParaguaySuggestions(suggestions) {
+    return suggestions.filter((suggestion) => {
+        const lat = Number(suggestion.lat);
+        const lon = Number(suggestion.lon);
+        return Number.isFinite(lat) && Number.isFinite(lon) && isWithinParaguay(lat, lon);
+    });
+}
 function normalizeGooglePlace(place) {
     const lat = place?.location?.latitude;
     const lon = place?.location?.longitude;
@@ -122,6 +132,7 @@ async function searchGooglePlaces(query, limit) {
     return (Array.isArray(data?.places) ? data.places : [])
         .map(normalizeGooglePlace)
         .filter(Boolean)
+        .filter((suggestion) => isWithinParaguay(Number(suggestion.lat), Number(suggestion.lon)))
         .slice(0, limit);
 }
 async function searchGooglePlacesLegacy(query, limit) {
@@ -145,6 +156,7 @@ async function searchGooglePlacesLegacy(query, limit) {
     return (Array.isArray(data?.results) ? data.results : [])
         .map(normalizeLegacyGooglePlace)
         .filter(Boolean)
+        .filter((suggestion) => isWithinParaguay(Number(suggestion.lat), Number(suggestion.lon)))
         .slice(0, limit);
 }
 async function searchGooglePlacesWithFallback(query, limit) {
@@ -1268,14 +1280,14 @@ app.get("/geocode", async (req, res) => {
             },
         });
         const data = await response.json();
-        const suggestions = (Array.isArray(data) ? data : []).map((item) => ({
+        const suggestions = filterParaguaySuggestions((Array.isArray(data) ? data : []).map((item) => ({
             display_name: item.display_name,
             lat: item.lat,
             lon: item.lon,
             source: "nominatim",
             place_id: item.place_id ? String(item.place_id) : undefined,
             type: item.type,
-        }));
+        })));
         return res.json(suggestions || []);
     }
     catch (err) {
