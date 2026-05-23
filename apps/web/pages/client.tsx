@@ -67,7 +67,7 @@ type Suggestion = {
   display_name: string;
   lat: string;
   lon: string;
-  source?: "google" | "nominatim";
+  source?: "google" | "google_legacy" | "nominatim";
   place_id?: string;
   type?: string;
 };

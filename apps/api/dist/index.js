@@ -73,6 +73,23 @@ function normalizeGooglePlace(place) {
         type: Array.isArray(place?.types) ? place.types[0] : undefined,
     };
 }
+function normalizeLegacyGooglePlace(place) {
+    const lat = place?.geometry?.location?.lat;
+    const lon = place?.geometry?.location?.lng;
+    if (typeof lat !== "number" || typeof lon !== "number")
+        return null;
+    const name = place?.name || "";
+    const address = place?.formatted_address || place?.vicinity || "";
+    const displayName = [name, address].filter(Boolean).join(", ");
+    return {
+        display_name: displayName || `${lat}, ${lon}`,
+        lat: String(lat),
+        lon: String(lon),
+        source: "google_legacy",
+        place_id: place?.place_id,
+        type: Array.isArray(place?.types) ? place.types[0] : undefined,
+    };
+}
 async function searchGooglePlaces(query, limit) {
     const apiKey = process.env.GOOGLE_PLACES_API_KEY;
     if (!apiKey)
@@ -106,6 +123,45 @@ async function searchGooglePlaces(query, limit) {
         .map(normalizeGooglePlace)
         .filter(Boolean)
         .slice(0, limit);
+}
+async function searchGooglePlacesLegacy(query, limit) {
+    const apiKey = process.env.GOOGLE_PLACES_API_KEY;
+    if (!apiKey)
+        return [];
+    const url = new URL("https://maps.googleapis.com/maps/api/place/textsearch/json");
+    url.searchParams.set("query", query);
+    url.searchParams.set("language", "es");
+    url.searchParams.set("region", "py");
+    url.searchParams.set("key", apiKey);
+    const response = await fetch(url);
+    if (!response.ok) {
+        const body = await response.text().catch(() => "");
+        throw new Error(`google_places_legacy_${response.status}_${body.slice(0, 120)}`);
+    }
+    const data = await response.json();
+    if (data.status && !["OK", "ZERO_RESULTS"].includes(data.status)) {
+        throw new Error(`google_places_legacy_${data.status}_${data.error_message || ""}`);
+    }
+    return (Array.isArray(data?.results) ? data.results : [])
+        .map(normalizeLegacyGooglePlace)
+        .filter(Boolean)
+        .slice(0, limit);
+}
+async function searchGooglePlacesWithFallback(query, limit) {
+    try {
+        return await searchGooglePlaces(query, limit);
+    }
+    catch (err) {
+        const message = err?.message || String(err);
+        const shouldTryLegacy = message.includes("SERVICE_DISABLED") ||
+            message.includes("PERMISSION_DENIED") ||
+            message.includes("REQUEST_DENIED") ||
+            message.includes("google_places_403");
+        if (!shouldTryLegacy)
+            throw err;
+        console.warn("GOOGLE PLACES NEW unavailable, trying legacy Places API");
+        return searchGooglePlacesLegacy(query, limit);
+    }
 }
 async function ensureDatabaseCompatibility() {
     await prisma_1.default.$executeRawUnsafe(`ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "photoUrl" TEXT`);
@@ -1196,7 +1252,7 @@ app.get("/geocode", async (req, res) => {
         })();
         if (process.env.GOOGLE_PLACES_API_KEY) {
             try {
-                const googleSuggestions = await searchGooglePlaces(normalizedQuery, limit);
+                const googleSuggestions = await searchGooglePlacesWithFallback(normalizedQuery, limit);
                 if (googleSuggestions.length > 0) {
                     return res.json(googleSuggestions);
                 }
