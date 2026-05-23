@@ -160,22 +160,27 @@ export default function AdminLoginPage() {
         position: 'relative',
         zIndex: 10,
         background: 'rgba(255, 255, 255, 0.98)',
-        padding: '32px 40px',
+        padding: '0 40px 32px',
         borderRadius: '24px',
         backdropFilter: 'blur(20px)',
         boxShadow: '0 20px 60px rgba(0, 0, 0, 0.3)',
         width: '420px',
         maxWidth: 'calc(100vw - 64px)',
       }}>
-        <div style={{
-          fontWeight: 600,
-          marginBottom: 8,
-          fontSize: 28,
-          color: '#000',
-          letterSpacing: '-0.5px',
-          textAlign: 'center'
-        }}>
-          {isSetupMode ? "Crear Admin Root" : "Admin Login"}
+        <div
+          style={{
+            margin: '0 -40px 18px',
+            height: 128,
+            borderRadius: '24px 24px 0 0',
+            overflow: 'hidden',
+            background: '#0000ff',
+          }}
+        >
+          <img
+            src="/logo3_11_151913.png"
+            alt={isSetupMode ? "Crear Admin Root" : "Admin Login"}
+            style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+          />
         </div>
         <div style={{
           fontSize: 14,

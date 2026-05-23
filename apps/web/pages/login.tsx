@@ -79,15 +79,27 @@ export default function LoginPage() {
         transform: 'translate(-50%, -50%)',
         zIndex: 10, 
         background: 'rgba(255, 255, 255, 0.98)', 
-        padding: '32px 40px', 
+        padding: '0 40px 32px', 
         borderRadius: '24px', 
         backdropFilter: 'blur(20px)', 
         boxShadow: '0 20px 60px rgba(0, 0, 0, 0.3)',
         width: '400px',
         maxWidth: 'calc(100vw - 64px)'
       }}>
-        <div style={{ fontWeight: 600, marginBottom: 8, fontSize: 28, color: '#000', letterSpacing: '-0.5px', textAlign: 'center' }}>
-          MOVI
+        <div
+          style={{
+            margin: '0 -40px 18px',
+            height: 128,
+            borderRadius: '24px 24px 0 0',
+            overflow: 'hidden',
+            background: '#0000ff',
+          }}
+        >
+          <img
+            src="/logo3_11_151913.png"
+            alt="MOVI"
+            style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+          />
         </div>
         <div style={{ fontSize: 14, color: '#86868b', marginBottom: 24, textAlign: 'center' }}>
           Ingresa para continuar
