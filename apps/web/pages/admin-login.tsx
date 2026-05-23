@@ -164,8 +164,8 @@ export default function AdminLoginPage() {
         borderRadius: '24px',
         backdropFilter: 'blur(20px)',
         boxShadow: '0 20px 60px rgba(0, 0, 0, 0.3)',
-        width: '420px',
-        maxWidth: 'calc(100vw - 64px)',
+        width: 'min(420px, calc(100vw - 32px))',
+        maxWidth: 'calc(100vw - 32px)',
       }}>
         <div
           style={{

@@ -83,8 +83,8 @@ export default function LoginPage() {
         borderRadius: '24px', 
         backdropFilter: 'blur(20px)', 
         boxShadow: '0 20px 60px rgba(0, 0, 0, 0.3)',
-        width: '400px',
-        maxWidth: 'calc(100vw - 64px)'
+        width: 'min(400px, calc(100vw - 32px))',
+        maxWidth: 'calc(100vw - 32px)'
       }}>
         <div
           style={{
