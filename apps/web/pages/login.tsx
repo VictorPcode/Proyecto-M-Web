@@ -70,7 +70,7 @@ export default function LoginPage() {
       display: 'flex', 
       alignItems: 'center', 
       justifyContent: 'center',
-      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
+      background: 'linear-gradient(135deg, #9570eb 0%, #1523a2 100%)'
     }}>
       <div style={{ 
         position: 'fixed', 
@@ -84,7 +84,7 @@ export default function LoginPage() {
         backdropFilter: 'blur(20px)', 
         boxShadow: '0 20px 60px rgba(0, 0, 0, 0.3)',
         width: 'min(400px, calc(100vw - 32px))',
-        maxWidth: 'calc(100vw - 32px)'
+        maxWidth: 'calc(100vw - 85px)'
       }}>
         <div
           style={{

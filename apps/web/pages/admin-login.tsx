@@ -154,7 +154,7 @@ export default function AdminLoginPage() {
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
+      background: 'linear-gradient(135deg, #6694ea 0%, #720fd4 100%)'
     }}>
       <div style={{
         position: 'relative',
@@ -165,7 +165,7 @@ export default function AdminLoginPage() {
         backdropFilter: 'blur(20px)',
         boxShadow: '0 20px 60px rgba(0, 0, 0, 0.3)',
         width: 'min(420px, calc(100vw - 32px))',
-        maxWidth: 'calc(100vw - 32px)',
+        maxWidth: 'calc(100vw - 85px)'
       }}>
         <div
           style={{

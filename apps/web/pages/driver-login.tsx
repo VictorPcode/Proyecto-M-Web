@@ -73,7 +73,7 @@ export default function DriverLoginPage() {
       display: 'flex', 
       alignItems: 'center', 
       justifyContent: 'center',
-      background: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)'
+      background: 'linear-gradient(135deg, #f6fb93 0%, #eb4f4f 100%)'
     }}>
       <div style={{ 
         position: 'fixed', 
@@ -87,7 +87,7 @@ export default function DriverLoginPage() {
         backdropFilter: 'blur(20px)', 
         boxShadow: '0 20px 60px rgba(0, 0, 0, 0.3)',
         width: 'min(400px, calc(100vw - 32px))',
-        maxWidth: 'calc(100vw - 32px)'
+        maxWidth: 'calc(100vw - 85px)'
       }}>
         <div
           style={{
