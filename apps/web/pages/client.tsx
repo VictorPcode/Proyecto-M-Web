@@ -1,5 +1,5 @@
 //client.tsx
-import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent } from "react";
 import { useRouter } from "next/router";
 import { Button, Header } from "@movi/ui";
 import LeafletMap from "../../../packages/ui/LeafletMap";
@@ -823,6 +823,12 @@ export default function ClientPage() {
     return baseFare + wholeKm * 2600 + fractional * 2700;
   };
 
+  const estimatedFarePreview = useMemo(() => {
+    if (!originCoords || !destCoords) return null;
+    const distance = distanceKm(originCoords, destCoords);
+    return Math.round(calculateFare(distance));
+  }, [originCoords, destCoords]);
+
   const requestRide = () => {
     if (!user) {
       setMessages((m) => [
@@ -843,7 +849,7 @@ export default function ClientPage() {
 
     setWaitingDriver(true);
     const distance = distanceKm(originCoords, destCoords);
-    const estimatedFare = calculateFare(distance);
+    const estimatedFare = estimatedFarePreview ?? Math.round(calculateFare(distance));
     passengerRef.current?.emit("passenger:request_ride", {
       passengerId: user.id,
       origin: { lat: originCoords[1], lng: originCoords[0] },
@@ -1004,6 +1010,8 @@ export default function ClientPage() {
   const handleOriginChange = (query: string) => {
     setActiveSearchField("origin");
     setOriginQuery(query);
+    setOriginCoords(null);
+    setRouteGeometry(null);
     setDestSuggestions([]);
     if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
     debounceTimerRef.current = setTimeout(async () => {
@@ -1034,6 +1042,8 @@ export default function ClientPage() {
   const handleDestChange = (query: string) => {
     setActiveSearchField("dest");
     setDestQuery(query);
+    setDestCoords(null);
+    setRouteGeometry(null);
     setOriginSuggestions([]);
     if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
     debounceTimerRef.current = setTimeout(async () => {
@@ -1559,6 +1569,54 @@ export default function ClientPage() {
                   }}
                 >
                   {geocodingError}
+                </div>
+              )}
+
+              {estimatedFarePreview !== null && !waitingDriver && (
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    gap: 16,
+                    padding: "14px 16px",
+                    marginTop: 8,
+                    background: "#f5f5f7",
+                    border: "1px solid rgba(0,0,0,0.08)",
+                    borderRadius: 12,
+                  }}
+                >
+                  <div>
+                    <div
+                      style={{
+                        color: "#1d1d1f",
+                        fontSize: 14,
+                        fontWeight: 700,
+                        lineHeight: 1.2,
+                      }}
+                    >
+                      Vas a pagar
+                    </div>
+                    <div
+                      style={{
+                        color: "#6e6e73",
+                        fontSize: 12,
+                        marginTop: 3,
+                      }}
+                    >
+                      Tarifa estimada antes de solicitar
+                    </div>
+                  </div>
+                  <div
+                    style={{
+                      color: "#007AFF",
+                      fontSize: 22,
+                      fontWeight: 800,
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {formatGuarani(estimatedFarePreview)}
+                  </div>
                 </div>
               )}
 

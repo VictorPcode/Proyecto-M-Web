@@ -23,7 +23,7 @@ export default function LoginPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         if (data.error === "not_found") {
           if (confirm("Usuario no encontrado. ¿Deseas registrarte?")) {
@@ -36,7 +36,7 @@ export default function LoginPage() {
           alert("Contraseña incorrecta. Verificá tus datos.");
           return;
         }
-        if (data.error === "not_approved") {
+        if (data.error === "not_approved" || data.error === "driver_not_approved") {
           alert("Tu cuenta de conductor aún no fue aprobada por un administrador.");
           return;
         }
@@ -56,7 +56,7 @@ export default function LoginPage() {
       }
     } catch (err) {
       console.error(err);
-      alert("Login error");
+      alert("No se pudo conectar con el servidor de login. Verifica que el API esté corriendo en http://localhost:4000.");
     } finally {
       setLoading(false);
     }

@@ -1,6 +1,14 @@
 import React, { useEffect, useRef } from "react";
 import type { LatLngExpression } from "leaflet";
 
+type LeafletModule = typeof import("leaflet");
+
+const loadLeaflet = () =>
+  Promise.resolve().then(() => {
+    const mod = require("leaflet") as LeafletModule | { default: LeafletModule };
+    return ("default" in mod ? mod.default : mod) as LeafletModule;
+  });
+
 type Marker = {
   id: string;
   lngLat: [number, number];
@@ -47,10 +55,8 @@ export default function LeafletMap({
         return;
       }
 
-      import("leaflet").then((L) => {
+      loadLeaflet().then((leaflet) => {
         if (!containerRef.current || !isMountedRef.current || mapRef.current) return;
-
-        const leaflet = L.default || L;
 
         if (!document.getElementById("leaflet-css")) {
           const link = document.createElement("link");
@@ -123,9 +129,7 @@ export default function LeafletMap({
   useEffect(() => {
     if (!mapRef.current) return;
 
-    import("leaflet").then((L) => {
-      const leaflet = L.default || L;
-
+    loadLeaflet().then((leaflet) => {
       markersRef.current.forEach((m) => m.remove());
       markersRef.current = [];
 
@@ -161,9 +165,7 @@ export default function LeafletMap({
   useEffect(() => {
     if (!mapRef.current || !route || route.length < 2) return;
 
-    import("leaflet").then(async (L) => {
-      const leaflet = L.default || L;
-
+    loadLeaflet().then(async (leaflet) => {
       if (routeLayerRef.current) {
         routeLayerRef.current.remove();
         routeLayerRef.current = null;
